@@ -1,0 +1,11 @@
+@Host = https://localhost:7013
+
+### Server process health (not database health)
+GET {{Host}}/health
+Accept: application/json
+
+### Registration example: synthetic data ONLY
+# POST {{Host}}/api/auth/register
+# Content-Type: application/json
+#
+# {"email":"demo@example.test","password":"ChangeThisDemo123!","displayName":"Usuaria Demostracion","curp":"DEMO001122MDFXXX00"}

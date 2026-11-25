@@ -1,0 +1,25 @@
+# Visual Studio, .NET, MAUI / WinForms build artifacts
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.rsuser
+TestResults/
+*.pdb
+*.cache
+*.tmp
+# Never commit personal configuration or secrets
+*.pfx
+*.p12
+*.key
+*.pem
+.env
+.env.*
+!*.example
+**/appsettings.Local.json
+**/appsettings.Production.json
+**/secrets.json
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="instruccion.md" />
+    <File Path="LICENSE.md" />
+    <File Path=".gitignore" />
+    <File Path=".gitattributes" />
+  </Folder>
+  <Project Path="MujeresUnidas.Comunidad/MujeresUnidas.Comunidad.csproj" Id="c89ebebf-a063-4f8d-8ec5-63ec70c81d20" />
+  <Project Path="MujeresUnidas.Gestion/MujeresUnidas.Gestion.csproj" Id="a0dfd0cb-91f7-43c5-a255-f1930f9a0157" />
+  <Project Path="MujeresUnidas.Server/MujeresUnidas.Server.csproj" />
+</Solution>
