@@ -31,6 +31,10 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             [RegularExpression("^[A-Z0-9]{18}$", ErrorMessage = "La CURP de prueba debe tener exactamente 18 caracteres alfanuméricos.")]
             public string Curp { get; set; }
 
+            /// <summary>Requested community category; requires institutional approval.</summary>
+            [Required, RegularExpression("^(Member|Staff)$")]
+            public string CommunityRole { get; set; }
+
             [Required(ErrorMessage = "Escribe una contraseña.")]
             [StringLength(128, MinimumLength = 10, ErrorMessage = "La contraseña debe contener entre 10 y 128 caracteres.")]
             public string Password { get; set; }

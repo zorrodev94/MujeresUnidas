@@ -29,7 +29,12 @@ public sealed class AccountsController : ControllerBase
 
     #region Task
     [HttpGet("setup/status")]
-    public async Task<IActionResult> SetupStatus() => Ok(new { ownerExists = await _accounts.OwnerExistsAsync() });
+    public async Task<IActionResult> SetupStatus()
+    {
+        if (!await _accounts.SchemaCurrentAsync())
+            return StatusCode(503,new OperationResult("La base demo no tiene el esquema R2. Ejecuta los scripts de instruccion.md en una base de PRUEBAS."));
+        return Ok(new { ownerExists = await _accounts.OwnerExistsAsync() });
+    }
 
     [HttpPost("setup/owner")]
     public async Task<IActionResult> SetupOwner([FromBody] OwnerUser.SetupData request)
@@ -80,6 +85,13 @@ public sealed class AccountsController : ControllerBase
         };
     }
 
+    [HttpPost("auth/logout")]
+    public async Task<IActionResult> Logout()
+    {
+        await _accounts.LogoutAsync(Request.Headers["Authorization"].ToString());
+        return Ok(new OperationResult("Sesión finalizada."));
+    }
+
     [HttpGet("auth/me")]
     public async Task<IActionResult> Me()
     {
@@ -108,7 +120,7 @@ public sealed class AccountsController : ControllerBase
     {
         var actor = await CurrentUserAsync();
         if (!CanManageCommunity(actor)) return StatusCode(403, new OperationResult("Acceso no autorizado."));
-        bool changed = actor.Kind == "Owner"
+        bool changed = actor!.Kind == "Owner"
             ? await _owner.AcceptAccountAsync(id, actor.Id)
             : await _community.ChangeStatusAsync(id, AccountStatus.Active, actor.Id);
         return changed
@@ -121,7 +133,7 @@ public sealed class AccountsController : ControllerBase
     {
         var actor = await CurrentUserAsync();
         if (!CanManageCommunity(actor)) return StatusCode(403, new OperationResult("Acceso no autorizado."));
-        return await _community.ChangeStatusAsync(id,AccountStatus.Blocked,actor.Id)
+        return await _community.ChangeStatusAsync(id,AccountStatus.Blocked,actor!.Id)
             ? Ok(new OperationResult("Cuenta bloqueada.")) : NotFound();
     }
 

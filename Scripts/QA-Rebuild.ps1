@@ -1,4 +1,4 @@
-# QA-R1 - Build Server, Gestión and Comunidad Windows before approving a commit.
+# QA-R2 - Build Server, Gestión and Comunidad Windows before approving a commit.
 # Does not modify SQL, Git history or local secrets.
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {

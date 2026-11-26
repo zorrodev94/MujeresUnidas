@@ -14,6 +14,7 @@ public sealed class AccountService(UserRepository repository,IConfiguration conf
 {
     #region Task
     public Task<bool> OwnerExistsAsync()=>repository.OwnerExistsAsync();
+    public Task<bool> SchemaCurrentAsync()=>repository.SchemaCurrentAsync();
 
     public async Task<string> SetupOwnerAsync(OwnerUser.SetupData data)
     {
@@ -36,7 +37,8 @@ public sealed class AccountService(UserRepository repository,IConfiguration conf
         if(string.IsNullOrWhiteSpace(data.Password) || data.Password.Length<10 ||
            string.IsNullOrWhiteSpace(data.DisplayName) || data.DisplayName.Trim().Length<2 ||
            string.IsNullOrWhiteSpace(data.Curp) || data.Curp.Trim().Length!=18 ||
-           string.IsNullOrWhiteSpace(data.Email)) return "INVALID_INPUT";
+           string.IsNullOrWhiteSpace(data.Email) ||
+           data.CommunityRole is not ("Member" or "Staff")) return "INVALID_INPUT";
         var (salt,hash)=PasswordSecurity.Hash(data.Password);
         return await repository.InsertCommunityAsync(data,salt,hash);
     }
@@ -68,6 +70,16 @@ public sealed class AccountService(UserRepository repository,IConfiguration conf
         var expires=DateTime.UtcNow.AddHours(8);
         await repository.SaveSessionAsync(account.Id,PasswordSecurity.TokenDigest(token),expires);
         return(new AuthResponse(token,expires,account.ToApiUser()),"OK");
+    }
+
+    /// <summary>Invalidates an active server session; closing the UI alone is insufficient.</summary>
+    public Task LogoutAsync(string? bearer)
+    {
+        if (string.IsNullOrWhiteSpace(bearer) ||
+            !bearer.StartsWith("Bearer ",StringComparison.OrdinalIgnoreCase))
+            return Task.CompletedTask;
+        string token = bearer[7..].Trim();
+        return token.Length<20 ? Task.CompletedTask : repository.LogoutAsync(PasswordSecurity.TokenDigest(token));
     }
 
     public Task<ApiUser?> GetUserByTokenAsync(string? bearer)

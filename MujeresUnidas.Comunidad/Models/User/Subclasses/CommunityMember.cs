@@ -23,6 +23,10 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
             public string Email { get; set; }
             [Required, RegularExpression("^[A-Z0-9]{18}$")]
             public string Curp { get; set; }
+
+            /// <summary>Requested community category; requires institutional approval.</summary>
+            [Required, RegularExpression("^(Member|Staff)$")]
+            public string CommunityRole { get; set; }
             [Required, StringLength(128, MinimumLength = 10)]
             public string Password { get; set; }
         }
@@ -94,6 +98,11 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
         }
 
         /// <summary>Clears the local session when the user closes her account session.</summary>
+        public async Task SignOutAsync()
+        {
+            try { await Api.RequestAsync(HttpMethod.Post,"api/auth/logout"); }
+            finally { Api.SignOut(); }
+        }
         public void SignOut() => Api.SignOut();
         #endregion Task
     }

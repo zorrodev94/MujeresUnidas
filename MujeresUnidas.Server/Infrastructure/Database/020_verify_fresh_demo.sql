@@ -10,3 +10,6 @@ GO
 SELECT N'Accounts' AS TableName, COUNT(*) AS TotalRows FROM dbo.Accounts;
 SELECT N'ManagementRoles' AS TableName, Code,DisplayName,IsActive FROM dbo.ManagementRoles ORDER BY DisplayName;
 GO
+
+SELECT c.name AS ColumnName, c.is_nullable AS AllowsNull FROM sys.columns c WHERE object_id=OBJECT_ID(N'dbo.Accounts') AND c.name=N'CommunityRole';
+SELECT N'CommunityPosts' AS TableName, COUNT(*) AS TotalRows FROM dbo.CommunityPosts;

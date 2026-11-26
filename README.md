@@ -1,78 +1,53 @@
-# Mujeres Unidas · EarlyAccess · R1 candidata
+# Mujeres Unidas · EarlyAccess · R2 (candidata para QA)
 
-Prototipo académico del Hackathon FIM-UAS 2026, orientado a la comunidad de mujeres de Ahome, Sinaloa. **No representa un servicio institucional autorizado ni un canal de emergencias**. Esta copia es una **candidata para revisión**, no un release aprobado ni un commit realizado.
+Solución académica del **Hackathon FIM-UAS 2026**: Comunidad (.NET MAUI), Gestión (WinForms) y Server (.NET 10 ASP.NET Core + SQL Server). Diseñada como prototipo para explorar recursos comunitarios, publicaciones moderadas y gestión de altas. **No está afiliada formalmente ni sustituye servicios de SEMUJERES, autoridades, profesionales sanitarios o emergencias.** Utilizar exclusivamente identidades y contenido ficticios durante las pruebas.
 
-## Abrir en Visual Studio
+> R2 es una candidata basada en la R1 del equipo. No contiene `.git`, commits, secretos ni datos de participantes. Su compilación y funcionamiento deben validarse en Visual Studio 2026; consulta `instruccion.md`.
 
-Abre **`MujeresUnidas.slnx`** desde la raíz. `README.md`, `instruccion.md`, `LICENSE.md` y las reglas Git aparecen en **Solution Items**, junto a los tres proyectos:
+## Solución
 
-| Proyecto | Tecnología | Responsabilidad |
-| --- | --- | --- |
-| `MujeresUnidas.Server` | ASP.NET Core Web API · .NET 10 · SQL Server | Registro, sesiones, activaciones, privilegios, auditoría y persistencia |
-| `MujeresUnidas.Comunidad` | .NET MAUI · Windows / Android | Registro y acceso de Comunidad, Home ilustrado y perfil |
-| `MujeresUnidas.Gestion` | Windows Forms · .NET 10 | Configuración Owner, acceso institucional, revisión y activación, altas de personal |
+| Proyecto | Responsabilidad implementada |
+| --- | --- |
+| `MujeresUnidas.Server` | API, validación de roles, credenciales PBKDF2, sesiones revocables, SQL parametrizado, primera cuenta Owner, personal institucional, activación de Comunidad y publicaciones moderadas |
+| `MujeresUnidas.Gestion` | Primera activación del Owner, login de Owner y personal, Home con cifras reales, aprobación/bloqueo de solicitudes, alta de personal y catálogo de puestos desde SQL |
+| `MujeresUnidas.Comunidad` | Login, solicitud Miembro/Staff, Home con tres destacados, vistas Blogs/Guías/Empleos/Eventos, perfil, creación/edición/retiro de publicaciones y revisión exclusiva para Staff aprobado |
 
-### Convenciones de ingeniería
+`README.md`, `instruccion.md` y `LICENSE.md` están en la raíz y son *Solution Items* virtuales de Visual Studio. `Scripts/QA-Rebuild.ps1` reconstruye los tres proyectos y `Scripts/QA-Smoke.ps1` verifica respuestas HTTP de lectura sin modificar SQL.
 
-- Namespace de **bloque** con `{ }`; una clase por archivo cuando corresponda.
-- `Models/User/Base/User.cs` en cada cliente y en Server; contiene datos comunes, estructuras de operaciones y `#region Task`.
-- Herencia de Server: `OwnerUser : User`, `ManagementUser : User`, `CommunityMember : User`. **Owner no hereda de ManagementUser**.
-- Contrato de acceso `IAccountAccess<TRegistration>` combina `LoginAsync` y `RegisterAsync`, con tipos distintos para el registro de Owner y Comunidad.
-- Las estructuras de registro y perfil son **internas a la clase correspondiente**; los métodos asíncronos ejecutan operaciones reales sobre la API o el servicio del servidor.
-- `User.RoleUserGestion` y `User.RoleUserComunidad` conservan los catálogos iniciales en `#region Arrays`. La lista de puestos visible en Gestión se lee realmente de `dbo.ManagementRoles`.
-- Los puestos son **configurables en SQL**, no un `InstitutionalRole` compilado. Crear un puesto nuevo habilita acceso básico de personal, **no** permisos de administrador automáticamente.
-- Estados técnicos en `Models/User/Enums`: `AccountStatus` (Pending/Active/Blocked), `ActivationStatus` (AwaitingAppointment/Approved/Declined); `AccountKind` delimita los tres tipos técnicos de cuenta. No hay citas reales todavía.
-- `Comunidad/Models` ejecuta solicitudes HTTP por medio de `Connection/ApiClient`; `Gestion/Models` usa `Connection/ApiConnection`. **Las ventanas no ejecutan consultas SQL ni envían HTTP directamente**.
-- Se reservan modelos vacíos en `Server/Models/Messages` y `Server/Models/Publications` para iteraciones futuras. No simulan chat, blogs ni publicaciones funcionales.
+## Operaciones de cuentas
 
-## Instalación de prueba desde cero
+- **OwnerUser**: única cuenta inicial, creada por clave `MU_OWNER_SETUP_KEY`; la ventana de configuración se muestra solamente cuando `ownerExists=false`. Es una clase derivada directa de `User`, no de `ManagementUser`.
+- **ManagementUser**: cuenta de Gestión creada por Owner, con puestos configurables `Administradora`, `Psicóloga`, `Jurídica`, `Trabajo social`, etc. Los puestos añadidos no heredan permisos administrativos. Solamente Owner/Administradora autorizada revisa solicitudes de Comunidad.
+- **CommunityMember**: solicita registro como **Member** o **Staff**, siempre `Pending` al crear la cuenta. Una cuenta Staff puede moderar publicaciones **solo después** de que un usuario autorizado la apruebe desde Gestión.
+- **Separación de cuentas**: aunque dos aplicaciones tengan usuarios con el mismo nombre, no se comparten credenciales por arte de magia ni se crea automáticamente acceso cruzado. La vinculación entre Gestión y Comunidad se planificará después.
 
-Requisitos en Windows: Visual Studio con componentes ASP.NET Core, escritorio .NET, MAUI y SDK .NET 10; SQL Server 2022 y SSMS.
+### Publicaciones
 
-1. Extrae la carpeta `MujeresUnidas` completa y abre `MujeresUnidas.slnx`.
-2. En **la instancia SQL de pruebas**, ejecuta `MujeresUnidas.Server/Infrastructure/Database/000_create_database.sql` **solamente después de eliminar cualquier esquema incompatible de revisiones anteriores**. Después ejecuta `020_verify_fresh_demo.sql` y confirma que `StaffRole` admite NULL. Crea tablas de cuentas, sesiones, auditoría y puestos.
-3. Si ya existe una base de una revisión anterior, **solo en tu instancia local de pruebas**, detén Server, ejecuta `910_drop_demo_database.sql` habilitando deliberadamente `@Confirm=1`, y después vuelve a ejecutar `000_create_database.sql`. Elimina por completo las cuentas antiguas para cada demostración. **No apliques esos scripts en una base real**.
-4. En la carpeta `MujeresUnidas.Server`, configura los secretos locales sin escribirlos en el repositorio:
+`dbo.CommunityPosts` conserva `Category`, `Title`, `Summary`, `Body`, `Status`, `AuthorId`, revisión e indicadores de destacados. Los textos **no se guardan en archivos JSON individuales**, sino en columnas SQL parametrizadas. El servidor devuelve JSON a la aplicación cliente; son formatos distintos con responsabilidades distintas. Aún **no** hay subida de imágenes de usuario: las tarjetas emplean recursos gráficos incluidos en la app. Los tres contenidos de ejemplo del SQL están señalados expresamente como ilustrativos y no son oportunidades ni eventos reales.
 
-   ```powershell
-   dotnet user-secrets set "ConnectionStrings:Main" "Server=localhost;Database=MujeresUnidas;Integrated Security=True;Encrypt=True;TrustServerCertificate=True;"
-   ```
+- `Member`: crea una publicación pendiente, la modifica (regresa a revisión), la retira, y ve sus propios estados.
+- `Staff` aprobado: puede crear y editar contenido, aprobar/rechazar publicaciones pendientes y retirar publicaciones; Server comprueba siempre la autorización.
+- Tipos de contenido: `Blog`, `Guide`, `Job` y `Event`; presentación en español como **Blogs, Guías, Empleos y Eventos**. En Inicio se cargan máximo **3 destacados**; no hay botón «Todas» ni «Ver más destacados».
+- Longitudes: título **4–120**, resumen **8–260** y cuerpo **20–2500** caracteres. No hay búsqueda, archivos adjuntos, comentarios ni «likes» operativos en esta revisión.
 
-   Utiliza tu instancia SQL real si difiere de `localhost`. `TrustServerCertificate=True` se usa **solo en este entorno de prueba**. El proyecto conserva el `UserSecretsId` local de R1; puedes verificarlo con `dotnet user-secrets list`.
-5. Configura `MU_OWNER_SETUP_KEY` en los secretos del **proyecto Server** si no está configurada:
+## Navegación
 
-   ```powershell
-   $bytes = New-Object byte[] 32
-   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-   $rng.GetBytes($bytes)
-   $rng.Dispose()
-   $setupKey = [Convert]::ToBase64String($bytes)
-   dotnet user-secrets set "MU_OWNER_SETUP_KEY" $setupKey
-   ```
+**Gestión:** Inicio, Activaciones, Citas, Personal, Casos/Seguimiento, Reportes. Citas, Casos y Reportes están preparados como secciones pendientes; no se representan como expedientes funcionales. **Publicaciones no es un menú de Gestión.**
 
-   Guarda la clave fuera del repositorio y utilízala solamente para la primera cuenta `OwnerUser`.
-6. Inicia **Server** con el perfil `https` y verifica `https://localhost:7013/health` y `https://localhost:7013/api/setup/status`. El primer endpoint no consulta SQL; el segundo sí.
-7. Ejecuta **Gestión**. La primera vez aparece **Activar primera cuenta**, con el nombre, correo, contraseña y clave configurada; después aparece **Iniciar sesión**. La vista no debe ocultar campos por una fila de 0 % de alto.
-8. Ejecuta **Comunidad** en `Windows Machine`. Se abre una ventana de tamaño parecido a un teléfono (430 × 700 aprox.), con un encabezado compacto de acceso; no hay que pasar por una imagen gigante para llegar al botón. Registra una cuenta con CURP completamente inventada de 18 caracteres, comprueba que queda pendiente y actívala desde Gestión. Verifica que recién entonces permite iniciar sesión. Si aparece **HTTP 503 / StaffRole**, el esquema SQL de pruebas debe restablecerse; no es un error de tus credenciales.
-9. Ejecuta `Scripts/QA-Rebuild.ps1` y sigue los casos de `instruccion.md` **antes de cualquier commit**.
+**Comunidad:** Inicio/Destacados y las vistas Blogs, Guías, Empleos y Eventos. Al entrar en Perfil se puede editar nombre y biografía, crear una publicación, revisar las propias y cerrar sesión. Staff aprobado ve además Moderación. Los modelos de chat, conversaciones y otros módulos permanecen pendientes.
 
-**Android:** desde el emulador, `10.0.2.2` representa la computadora anfitriona, pero el certificado de desarrollo HTTPS no se acepta automáticamente. La primera validación de R1 se realiza en Windows. No deshabilites la verificación TLS para corregir ese error.
+## Seguridad y alcance
 
-## Qué está implementado en código
+- Demo únicamente, con nombres, correos y CURP ficticios. **No capturar ni subir casos reales, testimonios identificables o información de víctimas.**
+- No se envían correos, SMS, avisos a servicios gubernamentales, geolocalización ni alertas 911 desde el prototipo. El **911** se muestra solo como orientación para emergencias reales.
+- Las claves del Owner y las credenciales de SQL se guardan en *User Secrets* locales. Nunca publicar los secretos en GitHub ni en capturas.
+- La versión Android del repositorio usa HTTP únicamente para probar el emulador local (`10.0.2.2:5277`) en entorno Development, **no es apta para producción ni para datos reales**. Para despliegue se requerirá un endpoint HTTPS confiable y permisos Android ajustados.
+- No se ejecutan migraciones ni borrados automáticos: el SQL incluye un script de restablecimiento **manual y destructivo** para una base de demostración solamente.
 
-- Server: inicialización de un solo Owner, login de Comunidad y Gestión, registro comunitario pendiente, sesiones, consultas autorizadas, activación y bloqueo, alta de personal, catálogo de puestos extensible, auditoría y resumen institucional.
-- Comunidad: login, registro, Home ilustrado y edición de nombre/biografía. Los demás módulos se identifican como demostración visual.
-- Gestión: login, primera instalación, tablero, revisión de cuentas, activación/bloqueo, altas de personal y adición de puestos institucionales.
-- Preparados **sin funcionalidad**: `Conversation`, `ChatMessage`, `Blog`, `Guide` y `EmploymentPost`.
+## Qué falta tras R2
 
-**No implementado:** citas reales, verificación física de identidad, expedientes, chat, blogs dinámicos, envío de correos, notificaciones institucionales y alertas de emergencia. La operación de aprobación en el prototipo **no certifica una verificación presencial real**.
-
-## Seguridad y limitaciones
-
-Contraseñas derivadas mediante PBKDF2, sesiones almacenadas como digests SHA-256, SQL parametrizado y permisos comprobados en Server. El paquete `System.Security.Cryptography.Pkcs` se fijó a `10.0.13` por avisos de vulnerabilidad de una dependencia transitiva; confirmar con restauración NuGet en Windows. No se distribuyen claves de configuración.
-
-**Esta revisión no fue compilada ni ejecutada dentro del entorno de preparación**: aquí no hay SDK .NET, Visual Studio ni SQL Server. Se requiere Rebuild Solution y pruebas funcionales en el equipo del proyecto. Consulta `instruccion.md` y el informe QA entregado fuera del ZIP.
+Citas reales, expedientes y seguimiento, moderación jurídica, mensajería/chats, archivos de medios, notificaciones, roles profesionales especializados, alertas de emergencia, mapas, integración de cuentas Gestión↔Comunidad y pruebas automáticas integrales. El emulador Android, SQL Server y Windows deben someterse a QA real antes de considerarse terminados.
 
 ## Derechos
 
-Material para desarrollo y revisión académica interna de EarlyAccess. Ver `LICENSE.md`. Los derechos de cada ilustración se revisarán antes de cualquier distribución pública.
+Revisar `LICENSE.md`. Las imágenes de referencia y recursos gráficos no deben presentarse como respaldo institucional oficial.

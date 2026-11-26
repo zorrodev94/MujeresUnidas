@@ -52,6 +52,11 @@ public sealed class ApiConnection : IDisposable
         Token=token;
         CurrentUser=user.Clone();
     }
+    public async Task SignOutAsync()
+    {
+        try { await SendAsync(HttpMethod.Post,"api/auth/logout"); }
+        finally { SignOut(); }
+    }
     public void SignOut() {Token="";CurrentUser=default;}
     public void Dispose()=>_http.Dispose();
 }

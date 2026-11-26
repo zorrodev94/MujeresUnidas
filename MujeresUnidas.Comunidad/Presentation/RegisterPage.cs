@@ -14,6 +14,7 @@ namespace MujeresUnidas.Comunidad.Presentation
         private readonly Entry _curp = Ui.Input("CURP ficticia · 18 caracteres");
         private readonly Entry _email = Ui.Input("Correo electrónico");
         private readonly Entry _password = Ui.Input("Contraseña · mínimo 10 caracteres", true);
+        private readonly Picker _role = new() {Title="Tipo de cuenta solicitado",TextColor=Ui.Plum,BackgroundColor=Colors.White};
         private readonly Label _feedback = Ui.Text("Para el hackathon utiliza solamente datos ficticios.", 12);
         #endregion Operation Data
 
@@ -24,6 +25,9 @@ namespace MujeresUnidas.Comunidad.Presentation
             _member = new CommunityMember(api);
             Title = "Crear cuenta";
             _email.Keyboard = Keyboard.Email;
+            _role.Items.Add("Miembro");
+            _role.Items.Add("Staff");
+            _role.SelectedIndex = 0;
             _curp.MaxLength = 18;
             _curp.TextChanged += (_, _) =>
             {
@@ -49,6 +53,8 @@ namespace MujeresUnidas.Comunidad.Presentation
             form.Children.Add(Ui.Field(_email));
             form.Children.Add(Ui.Text("Contraseña", 12));
             form.Children.Add(Ui.Field(_password));
+            form.Children.Add(Ui.Text("Tipo de cuenta (ambas requieren aprobación)",12));
+            form.Children.Add(_role);
             form.Children.Add(Ui.Text("Podrás completar tu perfil público después de iniciar sesión.", 12));
             var submit = Ui.Primary("Enviar solicitud");
             submit.Clicked += Register;
@@ -83,11 +89,12 @@ namespace MujeresUnidas.Comunidad.Presentation
                 var response = await _member.RegisterAsync(new CommunityMember.RegistrationData
                 {
                     DisplayName = _name.Text!.Trim(), Curp = curp,
-                    Email = _email.Text!.Trim(), Password = _password.Text ?? string.Empty
+                    Email = _email.Text!.Trim(), Password = _password.Text ?? string.Empty,
+                    CommunityRole = _role.SelectedIndex==1 ? "Staff" : "Member"
                 });
                 _feedback.Text = response.Message;
                 if (response.Success)
-                    await DisplayAlert("Solicitud recibida", "La cuenta permanece pendiente hasta ser activada desde Gestión.", "Entendido");
+                    await DisplayAlertAsync("Solicitud recibida", "La cuenta permanece pendiente hasta ser activada desde Gestión.", "Entendido");
             }
             finally { button.IsEnabled = true; }
         }

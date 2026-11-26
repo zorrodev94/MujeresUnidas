@@ -7,11 +7,12 @@ namespace MujeresUnidas.Comunidad.Connection
 /// <summary>Transports community requests to the central HTTPS API without local SQL credentials.</summary>
 public sealed class ApiClient
 {
-    // Windows: local Kestrel. Android emulator needs a trusted HTTPS host and certificate.
+    // Emulator only: 10.0.2.2 maps to host loopback; HTTP is restricted to local demo data.
+    // DO NOT use real personal or case data over this Android development transport.
     private readonly HttpClient _http=new()
     {
 #if ANDROID
-        BaseAddress=new Uri("https://10.0.2.2:7013/"),
+        BaseAddress=new Uri("http://10.0.2.2:5277/"),
 #else
         BaseAddress=new Uri("https://localhost:7013/"),
 #endif

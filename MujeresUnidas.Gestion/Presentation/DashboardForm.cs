@@ -50,12 +50,12 @@ public sealed class DashboardForm : Form
         AddNavControl(Theme.Label("Mujeres Unidas\nGestión",17,true,Color.White),84);
         AddNav("⌂  Inicio",async()=>await ShowHomeAsync());
         if(_canReview) AddNav("✓  Activaciones",async()=>await ShowActivationsAsync());
-        if(_owner) AddNav("+  Altas de personal",async()=>await ShowStaffAsync());
+        if(_owner) AddNav("+  Personal",async()=>await ShowStaffAsync());
         AddNav("▣  Citas · próximamente",()=>Future("Citas"));
         AddNav("▤  Casos · próximamente",()=>Future("Casos"));
         AddNav("▥  Reportes · próximamente",()=>Future("Reportes"));
-        AddNav("◉  Perfil",ShowProfile);
-        AddNav("↪  Cerrar sesión",()=>{_api.SignOut();Close();});
+        // The institutional navigation contains exactly six sections; profile remains accessible via user menu later.
+        AddNav("↪  Cerrar sesión",async()=>{await _api.SignOutAsync();Close();});
         _contentHost=new Panel {Dock=DockStyle.Fill,BackColor=Theme.Background,Padding=new Padding(17),AutoScroll=true};
         root.Controls.Add(_contentHost,1,0);
         Shown+=async (_,_)=>await ShowHomeAsync();
@@ -94,7 +94,7 @@ public sealed class DashboardForm : Form
     private static TableLayoutPanel CreateRows(params (float Height,SizeType Unit)[] rows) => Theme.Rows(rows);
     private static Panel Surface() => Theme.Card();
     private static Label Section(string caption,int size=20) => Theme.Label(caption,size,true);
-    private static void Future(string name) => MessageBox.Show($"{name} se implementará en una revisión posterior. No se muestran datos simulados como si fueran reales.","Mujeres Unidas · R1.1",MessageBoxButtons.OK,MessageBoxIcon.Information);
+    private static void Future(string name) => MessageBox.Show($"{name} se implementará en una revisión posterior. No se muestran datos simulados como si fueran reales.","Mujeres Unidas · R2",MessageBoxButtons.OK,MessageBoxIcon.Information);
 
     private async Task ShowHomeAsync()
     {
@@ -193,14 +193,14 @@ public sealed class DashboardForm : Form
         _accounts.ColumnHeadersDefaultCellStyle.ForeColor=Theme.Plum;
         _accounts.Columns.Add("Id","ID");_accounts.Columns[0].Visible=false;
         _accounts.Columns.Add("Nombre","Nombre");_accounts.Columns.Add("Curp","CURP (prueba)");
-        _accounts.Columns.Add("Correo","Correo");_accounts.Columns.Add("Estado","Estado");
+        _accounts.Columns.Add("Correo","Correo");_accounts.Columns.Add("Tipo","Tipo solicitado");_accounts.Columns.Add("Estado","Estado");
         _accounts.Columns.Add("Revision","Revisión");_accounts.Columns.Add("Fecha","Fecha UTC");
         _accounts.SelectionChanged+=(_,_)=>
         {
             if(_accounts.SelectedRows.Count==0){_selectedId="";if(_selection is not null)_selection.Text="Selecciona una solicitud.";return;}
             var row=_accounts.SelectedRows[0];
             _selectedId=row.Cells["Id"].Value?.ToString()??"";
-            if(_selection is not null)_selection.Text=$"{row.Cells["Nombre"].Value}\n{row.Cells["Correo"].Value}\nCURP de prueba: {row.Cells["Curp"].Value}\nEstado: {row.Cells["Estado"].Value}\nRevisión: {row.Cells["Revision"].Value}";
+            if(_selection is not null)_selection.Text=$"{row.Cells["Nombre"].Value}\n{row.Cells["Correo"].Value}\nTipo solicitado: {row.Cells["Tipo"].Value}\nCURP de prueba: {row.Cells["Curp"].Value}\nEstado: {row.Cells["Estado"].Value}\nRevisión: {row.Cells["Revision"].Value}";
         };
         root.Controls.Add(_accounts,0,2);
         var bottom=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=2,RowCount=1};
@@ -251,7 +251,7 @@ public sealed class DashboardForm : Form
             _accounts.Rows.Clear();
             foreach(var entry in response.Accounts)
                 _accounts.Rows.Add(entry.Id.ToString(),entry.DisplayName,entry.Curp??string.Empty,
-                    entry.Email,entry.Status,entry.ActivationStatus,entry.CreatedUtc.ToString("yyyy-MM-dd"));
+                    entry.Email,entry.CommunityRole,entry.Status,entry.ActivationStatus,entry.CreatedUtc.ToString("yyyy-MM-dd"));
             ApplyFilter();
             if(_feedback is not null)_feedback.Text=$"{_accounts.Rows.Count} registros recuperados · datos de prueba.";
         }
@@ -260,7 +260,7 @@ public sealed class DashboardForm : Form
     {
         if(!Guid.TryParse(_selectedId,out var id)){MessageBox.Show("Selecciona una cuenta de la lista.");return;}
         string verb=operation=="activate"?"activar":"bloquear";
-        if(MessageBox.Show($"¿Confirmas {verb} esta cuenta?\n\nEn R1.1 se simula la verificación presencial. No se ha comprobado identidad real.",
+        if(MessageBox.Show($"¿Confirmas {verb} esta cuenta?\n\nSolicitudes Staff habilitan moderación tras la aprobación. La verificación presencial es simulada.",
             "Confirmar operación",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
         bool success;
         string message;

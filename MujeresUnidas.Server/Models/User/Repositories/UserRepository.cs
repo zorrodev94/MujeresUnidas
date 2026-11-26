@@ -12,6 +12,31 @@ namespace MujeresUnidas.Server.Models.User.Repositories
 public sealed class UserRepository(Database database)
 {
     #region Task
+    /// <summary>Checks that a local demo database matches this revision without modifying it.</summary>
+    internal async Task<bool> SchemaCurrentAsync()
+    {
+        await using var db = await database.OpenAsync();
+        await using var cmd = new SqlCommand(@"SELECT CASE WHEN
+OBJECT_ID(N'dbo.ManagementRoles',N'U') IS NOT NULL AND
+OBJECT_ID(N'dbo.Accounts',N'U') IS NOT NULL AND
+OBJECT_ID(N'dbo.CommunityPosts',N'U') IS NOT NULL AND
+EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.Accounts')
+AND name=N'CommunityRole') AND
+EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.Accounts')
+AND name=N'StaffRole' AND is_nullable=1)
+THEN 1 ELSE 0 END",db);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync())==1;
+    }
+
+    /// <summary>Revokes the current login session by its stored token digest.</summary>
+    internal async Task LogoutAsync(byte[] digest)
+    {
+        await using var db = await database.OpenAsync();
+        await using var cmd = new SqlCommand("DELETE FROM dbo.Sessions WHERE TokenDigest=@digest",db);
+        cmd.Parameters.Add("@digest",SqlDbType.VarBinary,32).Value=digest;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     internal async Task<bool> OwnerExistsAsync()
     {
         await using var db=await database.OpenAsync();
@@ -22,20 +47,20 @@ public sealed class UserRepository(Database database)
     internal async Task<AccountSnapshot?> FindByEmailAsync(string normalizedEmail)
     {
         await using var db=await database.OpenAsync();
-        await using var cmd=new SqlCommand(@"SELECT Id,Email,DisplayName,Curp,Biography,Kind,Status,StaffRole,PasswordSalt,PasswordHash
+        await using var cmd=new SqlCommand(@"SELECT Id,Email,DisplayName,Curp,Biography,Kind,Status,StaffRole,CommunityRole,PasswordSalt,PasswordHash
 FROM dbo.Accounts WHERE Email=@email",db);
         cmd.Parameters.AddWithValue("@email",normalizedEmail);
         await using var r=await cmd.ExecuteReaderAsync();
         if(!await r.ReadAsync())return null;
         return new AccountSnapshot(r.GetGuid(0),r.GetString(1),r.GetString(2),
             r.IsDBNull(3)?null:r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),
-            r.GetByte(5),r.GetByte(6),r.IsDBNull(7)?null:r.GetString(7),(byte[])r[8],(byte[])r[9]);
+            r.GetByte(5),r.GetByte(6),r.IsDBNull(7)?null:r.GetString(7),r.IsDBNull(8)?null:r.GetString(8),(byte[])r[9],(byte[])r[10]);
     }
 
     internal async Task<ApiUser?> GetByTokenAsync(byte[] digest)
     {
         await using var db=await database.OpenAsync();
-        await using var cmd=new SqlCommand(@"SELECT a.Id,a.Email,a.DisplayName,a.Curp,a.Biography,a.Kind,a.Status,a.StaffRole
+        await using var cmd=new SqlCommand(@"SELECT a.Id,a.Email,a.DisplayName,a.Curp,a.Biography,a.Kind,a.Status,a.StaffRole,a.CommunityRole
 FROM dbo.Sessions s JOIN dbo.Accounts a ON s.AccountId=a.Id
 WHERE s.TokenDigest=@digest AND s.ExpiresUtc>SYSUTCDATETIME() AND a.Status=1",db);
         cmd.Parameters.Add("@digest",SqlDbType.VarBinary,32).Value=digest;
@@ -44,20 +69,20 @@ WHERE s.TokenDigest=@digest AND s.ExpiresUtc>SYSUTCDATETIME() AND a.Status=1",db
         return new ApiUser(r.GetGuid(0),r.GetString(1),r.GetString(2),"Active",
             r.GetByte(5) switch{0=>"Community",1=>"Staff",_=>"Owner"},
             r.IsDBNull(3)?null:r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),
-            r.IsDBNull(7)?null:r.GetString(7));
+            r.IsDBNull(7)?null:r.GetString(7),r.IsDBNull(8)?null:r.GetString(8));
     }
 
     internal async Task<IReadOnlyList<CommunityAccountRow>> AllCommunityAsync()
     {
         var rows=new List<CommunityAccountRow>();
         await using var db=await database.OpenAsync();
-        await using var cmd=new SqlCommand(@"SELECT Id,Email,DisplayName,Curp,Status,ActivationStatus,CreatedUtc
+        await using var cmd=new SqlCommand(@"SELECT Id,Email,DisplayName,Curp,Status,ActivationStatus,CreatedUtc,CommunityRole
 FROM dbo.Accounts WHERE Kind=0 ORDER BY CreatedUtc DESC",db);
         await using var r=await cmd.ExecuteReaderAsync();
         while(await r.ReadAsync())
             rows.Add(new CommunityAccountRow(r.GetGuid(0),r.GetString(1),r.GetString(2),
                 r.IsDBNull(3)?null:r.GetString(3),StatusName(r.GetByte(4)),
-                ActivationStatusName(r.GetByte(5)),r.GetDateTime(6)));
+                ActivationStatusName(r.GetByte(5)),r.GetDateTime(6),r.GetString(7)));
         return rows;
     }
 
@@ -163,11 +188,12 @@ END",db,tx);
         await using var db=await database.OpenAsync();
         try
         {
-            await using var cmd=new SqlCommand(@"INSERT dbo.Accounts(Id,Email,DisplayName,Curp,Kind,StaffRole,Status,PasswordSalt,PasswordHash)
-VALUES(NEWID(),@email,@name,@curp,0,NULL,0,@salt,@hash)",db);
+            await using var cmd=new SqlCommand(@"INSERT dbo.Accounts(Id,Email,DisplayName,Curp,Kind,StaffRole,CommunityRole,Status,PasswordSalt,PasswordHash)
+VALUES(NEWID(),@email,@name,@curp,0,NULL,@communityRole,0,@salt,@hash)",db);
             cmd.Parameters.AddWithValue("@email",data.Email.Trim().ToLowerInvariant());
             cmd.Parameters.AddWithValue("@name",data.DisplayName.Trim());
             cmd.Parameters.AddWithValue("@curp",data.Curp.Trim().ToUpperInvariant());
+            cmd.Parameters.AddWithValue("@communityRole",data.CommunityRole);
             cmd.Parameters.Add("@salt",SqlDbType.VarBinary,16).Value=salt;
             cmd.Parameters.Add("@hash",SqlDbType.VarBinary,32).Value=hash;
             await cmd.ExecuteNonQueryAsync();
@@ -261,13 +287,13 @@ WHERE Id=@id AND Kind=0 AND Status=1",db);
         cmd.Parameters.AddWithValue("@bio",(object?)data.Biography?.Trim()??DBNull.Value);
         cmd.Parameters.AddWithValue("@id",id);
         if(await cmd.ExecuteNonQueryAsync()<1)return null;
-        await using var get=new SqlCommand(@"SELECT Email,Curp,Biography,DisplayName
+        await using var get=new SqlCommand(@"SELECT Email,Curp,Biography,DisplayName,CommunityRole
 FROM dbo.Accounts WHERE Id=@id",db);
         get.Parameters.AddWithValue("@id",id);
         await using var r=await get.ExecuteReaderAsync();
         if(!await r.ReadAsync())return null;
         return new ApiUser(id,r.GetString(0),r.GetString(3),"Active","Community",
-            r.IsDBNull(1)?null:r.GetString(1),r.IsDBNull(2)?null:r.GetString(2));
+            r.IsDBNull(1)?null:r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),null,r.GetString(4));
     }
 
     #endregion Task

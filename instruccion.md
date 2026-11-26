@@ -1,54 +1,77 @@
-# Mujeres Unidas — instrucciones de verificación R1 y primer commit
+# Mujeres Unidas · Instrucciones R2 y pruebas de aceptación
 
-**Estado inicial:** candidata; no aprobada hasta ejecutar estas pruebas en Windows. Usa únicamente datos sintéticos de demostración.
+**Candidata R2.** No reemplazar el trabajo local del equipo ni hacer commit automáticamente. Extraer este ZIP en **otra carpeta**, comparar con el commit R1 y conservar solamente cambios revisados y probados.
 
-## 1. Compilar sin errores
+## 1. Rebuild en Visual Studio 2026
 
-En Visual Studio, abre `MujeresUnidas.slnx` y comprueba que aparecen `README.md`, `instruccion.md` y `LICENSE.md` bajo *Solution Items*. Ejecuta **Build → Rebuild Solution**. Alternativamente, en Developer PowerShell desde la raíz del repositorio:
+Abre `MujeresUnidas.slnx` y desde **Developer PowerShell** en la raíz:
 
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\Scripts\QA-Rebuild.ps1
 ```
 
-El script compila Server, Gestión y MAUI Windows por separado; falla ante un error de compilación o advertencia NuGet de seguridad `NU1902` / `NU1903`.
+Tres proyectos deben compilar sin errores. Copiar el texto completo de cualquier fallo de compilación. No publicar secretos ni datos reales.
 
-## 2. Restablecer el esquema experimental
+## 2. Preparar SQL Server (solo base local de pruebas)
 
-Para un comienzo totalmente nuevo: detén Server; abre SSMS en la instancia local de pruebas; si ya existe una base anterior, ejecuta `910_drop_demo_database.sql` cambiando temporalmente `@Confirm` a `1`. Luego ejecuta `000_create_database.sql`. No hay datos reales que preservar en este entorno académico, y la operación es destructiva.
+En SSMS, conectarse a la instancia que usa `ConnectionStrings:Main`. Asegurarse de que se trata de la **base de demostración**, sin datos de valor.
 
-Después ejecuta `020_verify_fresh_demo.sql`: la columna `StaffRole` de `dbo.Accounts` debe mostrar `AllowsNull = 1`.
+- Detener `MujeresUnidas.Server`.
+- Si existe una base antigua de R1, abrir `MujeresUnidas.Server/Infrastructure/Database/910_drop_demo_database.sql`. Solo si **se autoriza eliminar TODO** el contenido de la base `MujeresUnidas`, cambiar manualmente `@Confirm` a `1` y ejecutar. Se perderán cuentas y sesiones antiguas. Si la base contiene datos importantes, **no ejecutar** y usar otra instancia de pruebas.
+- Ejecutar `000_create_database.sql` y después `020_verify_fresh_demo.sql`. El script de creación es para base nueva; no actualiza estructuras incompatibles.
+- Comprobar `dbo.Accounts.CommunityRole` (Member/Staff), `dbo.Accounts.StaffRole` **nullable**, `dbo.ManagementRoles`, `dbo.CommunityPosts`, `dbo.Sessions` y `dbo.AuditEvents`.
+- `CommunityPosts` contiene tres entradas de ejemplo claramente etiquetadas; no son publicaciones reales.
 
-**Por qué:** la base utilizada durante las capturas seguía siendo de otra revisión (`StaffRole NOT NULL`), de modo que registrar Comunidad provocó SQL Server **515** y HTTP **500**. `000_create_database.sql` no reemplaza tablas existentes. El restablecimiento es explícito, destructivo y exclusivo de la base local de pruebas; nunca se ejecuta automáticamente desde la aplicación.
+**Si `/api/setup/status` devuelve 503:** el esquema local es anterior a R2; no intentes crear cuentas hasta corregirlo. **Si devuelve `ownerExists:true`:** ya hay un Owner en esa base, por eso la ventana de primera activación no aparece. No se desactiva con un clic: crea una base de prueba nueva si necesitas repetir el flujo inicial.
 
-Verifica las tablas `dbo.Accounts`, `dbo.Sessions`, `dbo.AuditEvents` y `dbo.ManagementRoles`. El catálogo inicial contiene `Administrator`, `Psychology`, `Legal` y `SocialWork` con sus nombres visibles en español.
+## 3. Configuración local de Server
 
-## 3. Pruebas funcionales en orden
-
-1. **Server:** iniciar con perfil `https`; abrir `/health` (respuesta de proceso) y `/api/setup/status` (consulta real a SQL).
-2. **Owner:** abrir Gestión, crear la cuenta única con `MU_OWNER_SETUP_KEY`. Intentar crear un segundo Owner: debe rechazarse.
-3. **Gestión:** abrir `MujeresUnidas.Gestion` con Server iniciado; si no existe dueño debe verse **Activar primera cuenta** (nombre, correo, contraseña y clave); tras crearla, debe mostrarse **Iniciar sesión**. Confirmar que el Home muestra contadores y auditoría recuperados de Server, sin barras horizontales en el acceso.
-4. **Comunidad:** registrar una persona ficticia. CURP de 17 y 19 caracteres: formulario rechaza; 18 caracteres alfanuméricos: se envía solicitud. Probar duplicado: respuesta 409.
-5. **Pendiente:** iniciar sesión en Comunidad antes de activar: acceso denegado por cuenta pendiente.
-6. **Activación:** desde Gestión, seleccionar la cuenta, activar y repetir login en Comunidad: ahora ingresa. Volver a consultar el estado desde Gestión.
-7. **Perfil:** actualizar nombre y biografía desde Comunidad, cerrar y volver a abrir; deben persistir en SQL.
-8. **Bloqueo:** bloquear desde Gestión, comprobar que una sesión anterior deja de autorizar nuevas solicitudes.
-9. **Personal:** Owner crea una Administradora con puesto cargado del servidor; debe poder consultar y activar. Probar con Psicóloga: debe entrar a Gestión, pero no crear personal ni activar solicitudes.
-10. **Puestos dinámicos:** Owner agrega un puesto nuevo desde Gestión. Debe aparecer en el ComboBox al recargar, sin recompilar. Crear personal con ese puesto; su cuenta no debe adquirir permisos de Administradora.
-11. **Diseño:** comprobar MAUI Windows en ventana de simulación telefónica (aprox. 430 × 700); el acceso muestra logo compacto, correo, contraseña y ambos botones **sin obligar a bajar por la ilustración**. En registro puede ser necesario desplazarse por los cuatro campos. Comprobar WinForms a 100 %, 150 % y 200 % de escala; registrar cualquier recorte, sobreposición o texto oculto.
-12. **Seguridad:** confirmar que ningún secreto está en el repositorio; revisar *Dependencies → NuGet* y que no persistan advertencias `NU1902` / `NU1903`.
-
-## 4. Criterio para el primer commit
-
-**No realizar el commit** si falla cualquier compilación o una operación central de login, registro o activación. Si falla una prueba, guardar el número de error, archivo/línea y el texto de salida en Visual Studio, sin publicar contraseñas, claves o CURP reales.
-
-Cuando todo pase:
+En Developer PowerShell, situarse en `MujeresUnidas.Server` y comprobar los secretos:
 
 ```powershell
-git status
-git add .
-git diff --cached --check
-git diff --cached --stat
-git commit -m "feat: primera revision funcional Mujeres Unidas R1"
+dotnet user-secrets list
 ```
 
-El commit lo realiza el responsable del proyecto, desde su repositorio local después de validar. Este paquete **no contiene un repositorio `.git` ni un commit prefabricado**.
+Debe haber una conexión `ConnectionStrings:Main` válida para SQL Server y una `MU_OWNER_SETUP_KEY` de al menos 24 caracteres. Ejemplo para la conexión local (ajustar instancia):
+
+```powershell
+dotnet user-secrets set 'ConnectionStrings:Main' 'Server=localhost;Database=MujeresUnidas;Integrated Security=True;Encrypt=True;TrustServerCertificate=True;'
+```
+
+Crear una clave fuerte aleatoria *fuera del repositorio* si aún no existe. No mandarla por chat ni ponerla en el README. En la configuración del Owner se introduce esa misma clave.
+
+Levantar `MujeresUnidas.Server` con perfil **https**. Comprobar desde Edge:
+
+- `https://localhost:7013/health`
+- `https://localhost:7013/api/setup/status` → `{"ownerExists":false}` sobre una base nueva
+
+También ejecutar el chequeo de lectura opcional:
+
+```powershell
+.\Scripts\QA-Smoke.ps1
+```
+
+## 4. Pruebas reales de acceso
+
+1. **Gestión sin Owner:** debe mostrar campos Nombre, Correo, Contraseña, Clave de instalación y el botón **Configurar autoridad principal**. Todos los controles visibles incluso con escalado 200 % (registrar captura si se recortan).
+2. **Owner:** con clave incorrecta no se crea; con clave correcta aparece confirmación y después el login; un segundo Owner no se puede crear. Al volver a abrir Gestión, debe ir directamente a login.
+3. **Home Gestión:** iniciar sesión con Owner; comprobar contadores reales, menú Inicio/Activaciones/Citas/Personal/Casos- Seguimiento/Reportes, sin opción Publicaciones. Citas/Casos/Reportes aún muestran aviso de pendiente.
+4. **Personal de Gestión:** crear una Administradora, Psicóloga, Jurídica o Trabajo Social con puesto cargado desde SQL. La Administradora puede ver activaciones; los demás puestos no reciben automáticamente esas facultades. Agregar un puesto adicional y comprobar que aparece sin recompilar.
+5. **Comunidad Member:** registrar con nombre, correo ficticio, CURP ficticia de **18** caracteres, contraseña de 10+, tipo Member. Intentar login antes de aprobación: debe rechazarlo como pendiente.
+6. **Gestión aprueba:** comprobar que la solicitud muestra el **tipo solicitado Member/Staff**, aprobar y volver a probar login Comunidad: debe abrir Home.
+7. **Comunidad Staff:** registrar **otra** cuenta ficticia como Staff; antes de aprobar no puede iniciar sesión ni moderar. Después de aprobar, entra a Comunidad y desde Perfil puede abrir Moderación.
+8. **Publicaciones:** Member crea un Blog y comprueba que está Pendiente en su perfil; no debe aparecer en Home. Staff lo ve en la cola y lo aprueba; entonces aparece bajo Blogs. Probar Rechazar, Editar y Retirar; confirmar que el servidor rechaza la aprobación de un Member.
+9. **Destacados:** Inicio muestra hasta tres entradas aprobadas y destacadas; las vistas Blogs/Guías/Empleos/Eventos muestran solo su categoría. No hay opción «Todas» ni botón de más destacados.
+10. **Sesiones:** cerrar sesión y verificar que `/api/auth/me` ya no acepta el token anterior. Bloquear una cuenta desde Gestión y comprobar que no entra de nuevo.
+11. **Diseño:** capturas de Gestión normal y maximizada; MAUI en Windows Machine y Android; revisar que no haya controles ocultos o desplazamiento innecesario en login. Diferencias visuales se registran como Issues de QA.
+
+## 5. Emulador Android (solo demostración con datos ficticios)
+
+Visual Studio → proyecto `MujeresUnidas.Comunidad` → seleccionar **Android Emulator** en lugar de **Windows Machine**. Asegurarse de tener instalado workload MAUI/Android, Android SDK y una imagen de emulador. Ejecutar Server con perfil `https` en el mismo PC: además de `https://localhost:7013`, ese perfil abre **`http://localhost:5277`**. En desarrollo no se redirige este HTTP para permitir la conexión del emulador.
+
+Android MAUI usa **`http://10.0.2.2:5277/`** (10.0.2.2 apunta al PC anfitrión del emulador). Está habilitado cleartext **solo como prototipo local con datos sintéticos**. Antes de distribuir cualquier APK o usar datos reales, cerrar HTTP, habilitar un dominio HTTPS válido y endurecer el manifiesto Android. El proyecto **no está listo para difusión a personas reales**.
+
+## 6. Estado de la revisión y Git
+
+`R2` contiene código fuente, no un commit. No hay migraciones. Las interfaces visuales y la base SQL requieren prueba en Windows del equipo. Una compilación correcta no sustituye pruebas reales de registro, moderación o dispositivos. Tras aprobar, revisar `git diff` antes de hacer `commit` en su repositorio privado y asociar los Issues del tablero XP.

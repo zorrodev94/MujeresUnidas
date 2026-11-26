@@ -17,7 +17,7 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         #region Structs
         /// <summary>Account row used to review a Community request in Gestión.</summary>
         public readonly record struct AccountData(Guid Id,string DisplayName,string? Curp,
-            string Email,string Status,string ActivationStatus,DateTime CreatedUtc);
+            string Email,string Status,string ActivationStatus,DateTime CreatedUtc,string CommunityRole);
 
         /// <summary>Result of a community account activation or block operation.</summary>
         public readonly record struct OperationResultData(bool Success,string Message);
@@ -39,7 +39,8 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
                         entry.GetProperty("email").GetString()??"",
                         entry.GetProperty("status").GetString()??"",
                         entry.GetProperty("activationStatus").GetString()??"",
-                        entry.GetProperty("createdUtc").GetDateTime()));
+                        entry.GetProperty("createdUtc").GetDateTime(),
+                        entry.GetProperty("communityRole").GetString()??"Member"));
                 return(true,items,string.Empty);
             }
             catch(Exception ex) when(ex is InvalidOperationException or KeyNotFoundException or JsonException or FormatException)
