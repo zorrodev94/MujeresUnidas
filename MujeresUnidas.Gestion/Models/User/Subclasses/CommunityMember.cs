@@ -9,20 +9,20 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         #region Operation Data
         private readonly ApiConnection _api;
         #endregion Operation Data
-
         #region Initialization
         public CommunityMember(ApiConnection api) { _api=api; }
         #endregion Initialization
-
         #region Structs
         /// <summary>Account row used to review a Community request in Gestión.</summary>
         public readonly record struct AccountData(Guid Id,string DisplayName,string? Curp,
-            string Email,string Status,string ActivationStatus,DateTime CreatedUtc,string CommunityRole);
+            string Email,string Status,string ActivationStatus,DateTime CreatedUtc,string CommunityRole,
+            DateTime? ProposedVisitUtc,bool IdentityChecked,string? LocationLabel);
 
         /// <summary>Result of a community account activation or block operation.</summary>
         public readonly record struct OperationResultData(bool Success,string Message);
+        /// <summary>Explicit role selected by the institutional reviewer, never by registration.</summary>
+        public readonly record struct ActivationData(string CommunityRole);
         #endregion Structs
-
         #region Task
         /// <summary>Returns Community registrations, subject to Server permissions.</summary>
         public async Task<(bool Success,IReadOnlyList<AccountData> Accounts,string Error)> GetAccountsAsync()
@@ -40,7 +40,11 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
                         entry.GetProperty("status").GetString()??"",
                         entry.GetProperty("activationStatus").GetString()??"",
                         entry.GetProperty("createdUtc").GetDateTime(),
-                        entry.GetProperty("communityRole").GetString()??"Member"));
+                        entry.GetProperty("communityRole").GetString()??"Member",
+                        entry.TryGetProperty("proposedVisitUtc",out var proposed)&&proposed.ValueKind==JsonValueKind.String
+                            ?proposed.GetDateTime():null,
+                        entry.TryGetProperty("identityChecked",out var checkedItem)&&checkedItem.ValueKind==JsonValueKind.True,
+                        entry.TryGetProperty("locationLabel",out var place)&&place.ValueKind==JsonValueKind.String?place.GetString():null));
                 return(true,items,string.Empty);
             }
             catch(Exception ex) when(ex is InvalidOperationException or KeyNotFoundException or JsonException or FormatException)
@@ -48,9 +52,9 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         }
 
         /// <summary>Approves the community activation; does not verify a real-world identity.</summary>
-        public async Task<OperationResultData> ActivateAsync(Guid id)
+        public async Task<OperationResultData> ActivateAsync(Guid id,string communityRole)
         {
-            var reply=await _api.SendAsync(HttpMethod.Post,$"api/accounts/{id}/activate");
+            var reply=await _api.SendAsync(HttpMethod.Post,$"api/accounts/{id}/activate",new ActivationData(communityRole));
             return new(reply.Success,reply.Success?"Cuenta activada.":reply.Error);
         }
 

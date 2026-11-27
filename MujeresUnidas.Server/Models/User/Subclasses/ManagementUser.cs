@@ -11,7 +11,6 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
         #region Initialization
         public ManagementUser(AccountService accounts) : base(accounts) { }
         #endregion Initialization
-
         #region Structs
         /// <summary>Data entered by the Owner in Gestión &gt; Altas de personal.</summary>
         public struct StaffRegistrationData
@@ -28,8 +27,13 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             [Required, StringLength(64)]
             public string Role { get; set; }
         }
+        /// <summary>Editable institutional presentation; roles and permissions are not editable here.</summary>
+        public struct ProfileData
+        {
+            [Required,StringLength(100,MinimumLength=2)] public string DisplayName { get; set; }
+            [StringLength(300)] public string? Biography { get; set; }
+        }
         #endregion Structs
-
         #region Task
         /// <summary>Authenticates an institutional account, including owner access.</summary>
         public override Task<(AuthResponse? Response, string Status)> LoginAsync(LoginData data)

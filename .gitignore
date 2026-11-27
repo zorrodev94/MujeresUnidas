@@ -23,3 +23,16 @@ TestResults/
 # OS
 .DS_Store
 Thumbs.db
+
+# Deployment outputs and real user media
+artifacts/
+**/PrivateMedia/
+**/publish/
+*.bak
+*.mdf
+*.ldf
+*.trn
+*.apk
+*.aab
+*.keystore
+*.jks

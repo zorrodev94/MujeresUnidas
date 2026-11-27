@@ -13,7 +13,6 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
         #region Initialization
         public OwnerUser(AccountService accounts) : base(accounts) { }
         #endregion Initialization
-
         #region Structs
         /// <summary>Fields shown only during the initial configuration of Gestión.</summary>
         public struct SetupData
@@ -37,7 +36,6 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             public string DisplayName { get; set; }
         }
         #endregion Structs
-
         #region Task
         /// <summary>Authenticates the owner account, never a staff or community account.</summary>
         public override Task<(AuthResponse? Response, string Status)> LoginAsync(LoginData data)
@@ -47,8 +45,8 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
         public Task<string> RegisterAsync(SetupData data) => Accounts.SetupOwnerAsync(data);
 
         /// <summary>Approves a community account after a demonstration-only review.</summary>
-        public Task<bool> AcceptAccountAsync(Guid communityAccountId, Guid ownerId)
-            => Accounts.ChangeStatusAsync(communityAccountId, AccountStatus.Active, ownerId);
+        public Task<bool> AcceptAccountAsync(Guid communityAccountId, Guid ownerId,string communityRole)
+            => Accounts.ChangeStatusAsync(communityAccountId, AccountStatus.Active, ownerId,communityRole);
 
         /// <summary>Creates a staff account after the owner has authenticated.</summary>
         public Task<string> CreateStaffAsync(ManagementUser.StaffRegistrationData data, Guid actorId)

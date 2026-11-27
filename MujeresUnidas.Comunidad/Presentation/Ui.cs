@@ -1,4 +1,5 @@
 using Microsoft.Maui.Controls.Shapes;
+using MujeresUnidas.Comunidad.Connection;
 
 namespace MujeresUnidas.Comunidad.Presentation
 {
@@ -6,20 +7,28 @@ namespace MujeresUnidas.Comunidad.Presentation
     internal static class Ui
     {
         #region Theme
-        internal static readonly Color Background = Color.FromArgb("#FCF5FF");
-        internal static readonly Color Plum = Color.FromArgb("#59206F");
-        internal static readonly Color Violet = Color.FromArgb("#8F35A9");
+        internal static readonly Color Background = Color.FromArgb("#F8F3FE");
+        internal static readonly Color Plum = Color.FromArgb("#521A70");
+        internal static readonly Color Violet = Color.FromArgb("#842BA2");
+        internal static readonly Color Coral = Color.FromArgb("#CF365A");
         internal static readonly Color Muted = Color.FromArgb("#74587F");
-        internal static readonly Color Lavender = Color.FromArgb("#F0D9FA");
-        internal static readonly Color Pink = Color.FromArgb("#FCE6F8");
-        internal static readonly Color BorderColor = Color.FromArgb("#E7C5F0");
+        internal static readonly Color Lavender = Color.FromArgb("#EBD8F8");
+        internal static readonly Color Pink = Color.FromArgb("#F9E8FA");
+        internal static readonly Color BorderColor = Color.FromArgb("#E9D5F3");
+        internal static readonly Color Frost = Color.FromArgb("#F1E6FC");
         #endregion Theme
-
         #region Components
         internal static Label Heading(string text, double size = 26) => new()
         {
             Text = text, FontSize = size, FontAttributes = FontAttributes.Bold,
             TextColor = Plum, LineBreakMode = LineBreakMode.WordWrap
+        };
+
+        /// <summary>Native text formatting for posts; no HTML/WebView injection.</summary>
+        internal static Label RichParagraph(string text,double size=15) => new()
+        {
+            FormattedText=RichPostText.Parse(text),FontSize=size,TextColor=Plum,
+            LineBreakMode=LineBreakMode.WordWrap
         };
 
         internal static Label Text(string text, double size = 14) => new()
@@ -47,25 +56,25 @@ namespace MujeresUnidas.Comunidad.Presentation
         {
             Text = label, TextColor = Colors.White, BackgroundColor = Violet,
             FontAttributes = FontAttributes.Bold, FontSize = 15,
-            CornerRadius = 17, HeightRequest = 56
+            CornerRadius = 23, HeightRequest = 54
         };
 
         internal static Button Secondary(string label) => new()
         {
             Text = label, TextColor = Plum, BackgroundColor = Pink,
             FontAttributes = FontAttributes.Bold, FontSize = 14,
-            CornerRadius = 17, HeightRequest = 51
+            CornerRadius = 22, HeightRequest = 48
         };
 
         internal static Border Card(View contents, int padding = 20) => new()
         {
             BackgroundColor = Colors.White, Stroke = BorderColor,
-            StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 26 },
+            StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 25 },
             Padding = new Thickness(padding), Content = contents,
             Shadow = new Shadow
             {
                 Brush = new SolidColorBrush(Color.FromArgb("#270F0733")),
-                Offset = new Point(0, 6), Radius = 18, Opacity = 0.3f
+                Offset = new Point(0, 4), Radius = 14, Opacity = 0.22f
             }
         };
 
@@ -84,15 +93,185 @@ namespace MujeresUnidas.Comunidad.Presentation
 
         internal static Image Illustration(double height = 280) => new()
         {
-            Source = "mu_women.png", HeightRequest = height, Aspect = Aspect.AspectFit,
+            Source = "mu_r31_people.png", HeightRequest = height, Aspect = Aspect.AspectFit,
             HorizontalOptions = LayoutOptions.Fill
         };
 
         internal static ScrollView Scroll(View content) => new()
         {
             Content = content, BackgroundColor = Background,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Default
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never
         };
+
+        /// <summary>Creates a circular photo with a branded fallback, without revealing private account fields.</summary>
+        internal static Image Avatar(double size = 62) => new()
+        {
+            Source = "mu_avatar_default.png", WidthRequest = size, HeightRequest = size,
+            Aspect = Aspect.AspectFill, HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            Clip = new EllipseGeometry
+            {
+                Center = new Point(size / 2, size / 2), RadiusX = size / 2, RadiusY = size / 2
+            }
+        };
+
+        /// <summary>Native rounded cover container, not an image of a user interface.</summary>
+        internal static Border Cover(Image image, double height = 170) => new()
+        {
+            HeightRequest = height, Stroke = BorderColor, StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 22 },
+            BackgroundColor = Lavender, Padding = 0, Content = image
+        };
+
+        /// <summary>Compact numeric metric used consistently for social profiles.</summary>
+        internal static VerticalStackLayout ProfileMetric(string number, string label) => new()
+        {
+            Spacing = 2, HorizontalOptions = LayoutOptions.Fill,
+            Children = { new Label { Text = number, TextColor = Plum, FontSize = 21,
+                    FontAttributes = FontAttributes.Bold, HorizontalTextAlignment = TextAlignment.Center },
+                new Label { Text = label, TextColor = Muted, FontSize = 11,
+                    HorizontalTextAlignment = TextAlignment.Center } }
+        };
+
+        /// <summary>Noninteractive feature flag for workflows not shipped in the Hackathon build.</summary>
+        internal static Border FutureBadge(string feature) => Tag(feature + " · Próximamente");
+
+        /// <summary>Reusable brand header with one-tap Search and notifications from every main destination.</summary>
+        internal static Grid Header(ContentPage page, ApiClient api, string title, bool search = true)
+        {
+            var bar = new Grid
+            {
+                ColumnDefinitions = { new ColumnDefinition(new GridLength(43)),
+                    new ColumnDefinition(GridLength.Star), new ColumnDefinition(new GridLength(39)),
+                    new ColumnDefinition(new GridLength(39)) },
+                HeightRequest = 62, ColumnSpacing = 4
+            };
+            bar.Add(new Image { Source = "mu_mark.png", WidthRequest = 42, HeightRequest = 42,
+                Aspect = Aspect.AspectFit }, 0, 0);
+            var words = new VerticalStackLayout { Spacing = 0, VerticalOptions = LayoutOptions.Center };
+            words.Children.Add(Heading("Mujeres Unidas", 16));
+            words.Children.Add(Text(title, 11));
+            bar.Add(words, 1, 0);
+            var searchIcon = Icon("nav_search.png", 27);
+            searchIcon.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(async () => await page.Navigation.PushAsync(new PeopleSearchPage(api)))
+            });
+            searchIcon.IsVisible = search;
+            bar.ColumnDefinitions[2].Width = search ? new GridLength(39) : new GridLength(0);
+            if (search) bar.Add(searchIcon, 2, 0);
+            var bell = Icon("nav_bell.png", 28);
+            bell.GestureRecognizers.Add(new TapGestureRecognizer
+            {
+                Command = new Command(async () => await page.Navigation.PushAsync(new NotificationsPage(api)))
+            });
+            bar.Add(bell, 3, 0);
+            return bar;
+        }
+
+        /// <summary>Role label is visual metadata, never a grant of professional or staff privileges.</summary>
+        internal static Border Tag(string label,bool prominent=false)
+        {
+            return new Border
+            {
+                BackgroundColor=prominent?Color.FromArgb("#E8CBF6"):Pink,
+                Stroke=prominent?Violet:BorderColor,
+                StrokeThickness=prominent?1:0,
+                StrokeShape=new RoundRectangle{CornerRadius=14},
+                Padding=new Thickness(12,6),
+                Content=new Label{Text=label,FontSize=12,FontAttributes=FontAttributes.Bold,
+                    TextColor=Plum,HorizontalOptions=LayoutOptions.Center}
+            };
+        }
+        internal static Border Section(string title,View body)
+        {
+            var column=new VerticalStackLayout{Spacing=12};
+            column.Children.Add(Heading(title,20));column.Children.Add(body);
+            return Card(column,17);
+        }
+        internal static Button Back(ContentPage page)
+        {
+            var button=Secondary("‹ Volver");
+            button.HeightRequest=42;button.FontSize=13;
+            button.Clicked+=async (_,_)=>await page.Navigation.PopAsync();
+            return button;
+        }
+        internal static Image Icon(string source,double size=28)=>new()
+        {Source=source,WidthRequest=size,HeightRequest=size,Aspect=Aspect.AspectFit,
+            HorizontalOptions=LayoutOptions.Center,VerticalOptions=LayoutOptions.Center};
+
+        /// <summary>Five mobile destinations; one person-search icon belongs in the header, not a duplicate tab.</summary>
+        internal static Grid MainTabs(ContentPage page, ApiClient api, string selected)
+        {
+            var footer = new Grid
+            {
+                BackgroundColor = Colors.White, HeightRequest = 74, ColumnSpacing = 0,
+                ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Star) }
+            };
+            (string Name, string IconFile)[] items =
+            [
+                ("Inicio", "nav_home.png"),
+                ("Mensajes", "nav_messages.png"),
+                ("Ayuda", "nav_safety.png"),
+                ("Atención", "nav_heart.png"),
+                ("Perfil", "nav_profile.png")
+            ];
+            for (var index = 0; index < items.Length; index++)
+            {
+                var (name, file) = items[index];
+                bool urgent = name == "Ayuda";
+                var group = new VerticalStackLayout
+                {
+                    Spacing = 3, Padding = new Thickness(0, urgent ? 3 : 8, 0, 0),
+                    HorizontalOptions = LayoutOptions.Fill, VerticalOptions = LayoutOptions.Center
+                };
+                if (urgent)
+                {
+                    group.Children.Add(new Border
+                    {
+                        StrokeThickness = 0, BackgroundColor = Color.FromArgb("#C83754"),
+                        StrokeShape = new RoundRectangle { CornerRadius = 28 },
+                        WidthRequest = 43, HeightRequest = 43,
+                        HorizontalOptions = LayoutOptions.Center, Content = Icon(file, 27)
+                    });
+                }
+                else group.Children.Add(Icon(file, 22));
+                group.Children.Add(new Label
+                {
+                    Text = name, FontSize = 9, FontAttributes = FontAttributes.Bold,
+                    TextColor = urgent ? Color.FromArgb("#9E2342") : name == selected ? Plum : Muted,
+                    HorizontalTextAlignment = TextAlignment.Center
+                });
+                var holder = new Border
+                {
+                    BackgroundColor = urgent ? Colors.White : name == selected ? Lavender : Colors.White,
+                    StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = 17 },
+                    Margin = new Thickness(1, 3), Content = group
+                };
+                var destination = name;
+                holder.GestureRecognizers.Add(new TapGestureRecognizer
+                {
+                    Command = new Command(async () =>
+                    {
+                        if (destination == selected && page.Navigation.NavigationStack.Count <= 2) return;
+                        await page.Navigation.PopToRootAsync();
+                        switch (destination)
+                        {
+                            case "Mensajes": await page.Navigation.PushAsync(new MessagesPage(api)); break;
+                            case "Ayuda": await page.Navigation.PushAsync(new HelpPage(api)); break;
+                            case "Atención": await page.Navigation.PushAsync(new CarePage(api)); break;
+                            case "Perfil": await page.Navigation.PushAsync(new ProfilePage(api)); break;
+                        }
+                    })
+                });
+                footer.Add(holder, index, 0);
+            }
+            return footer;
+        }
+
+        internal static ImageSource BytesSource(byte[] data)=>ImageSource.FromStream(()=>new MemoryStream(data));
 
         /// <summary>Uses a compact form on a phone and a two-column layout on large displays.</summary>
         internal static Grid ResponsiveAuth(View artwork, View form, VisualElement page,

@@ -8,12 +8,20 @@ using BaseUser = global::MujeresUnidas.Server.Models.User.Base.User;
 namespace MujeresUnidas.Server.Models.User.Subclasses
 {
     /// <summary>Defines operation data for requests submitted from Comunidad.</summary>
-    public sealed class CommunityMember : BaseUser, IAccountAccess<CommunityMember.RegistrationData>
+    public class CommunityMember : BaseUser, IAccountAccess<CommunityMember.RegistrationData>
     {
         #region Initialization
         public CommunityMember(AccountService accounts) : base(accounts) { }
+        /// <summary>Runtime capabilities are resolved from the authenticated Community role.</summary>
+        public virtual bool CanModerateBlogs => false;
+        public virtual string PublicRoleLabel => "Miembro de Comunidad";
+        public static CommunityMember ForRole(AccountService accounts,string? role) => role switch
+        {
+            "Staff" => new CommunityStaff(accounts),
+            "Professional" => new CommunityProfessional(accounts),
+            _ => new CommunityMember(accounts)
+        };
         #endregion Initialization
-
         #region Structs
         /// <summary>Minimum fields on the Community registration page; creates a Pending account.</summary>
         public struct RegistrationData
@@ -31,13 +39,12 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             [RegularExpression("^[A-Z0-9]{18}$", ErrorMessage = "La CURP de prueba debe tener exactamente 18 caracteres alfanuméricos.")]
             public string Curp { get; set; }
 
-            /// <summary>Requested community category; requires institutional approval.</summary>
-            [Required, RegularExpression("^(Member|Staff)$")]
-            public string CommunityRole { get; set; }
-
             [Required(ErrorMessage = "Escribe una contraseña.")]
             [StringLength(128, MinimumLength = 10, ErrorMessage = "La contraseña debe contener entre 10 y 128 caracteres.")]
             public string Password { get; set; }
+
+            /// <summary>Voluntary self-declaration of eligibility; no gender inferred from names or documents.</summary>
+            public bool EligibilityAffirmed { get; set; }
         }
 
         /// <summary>Editable public profile fields; confidential account identifiers are not editable here.</summary>
@@ -49,8 +56,10 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             [StringLength(300)]
             public string? Biography { get; set; }
         }
+        /// <summary>Institutional reviewer decides whether the account becomes Member or Staff.</summary>
+        public readonly record struct ActivationData(
+            [property: Required, RegularExpression("^(Member|Staff)$")] string CommunityRole);
         #endregion Structs
-
         #region Task
         /// <summary>Logs in through the Community account boundary.</summary>
         public override Task<(AuthResponse? Response, string Status)> LoginAsync(LoginData data)
@@ -67,8 +76,8 @@ namespace MujeresUnidas.Server.Models.User.Subclasses
             => Accounts.AllCommunityAsync();
 
         /// <summary>Changes a community account state after server-side authorization.</summary>
-        public Task<bool> ChangeStatusAsync(Guid id, AccountStatus status, Guid actorId)
-            => Accounts.ChangeStatusAsync(id, status, actorId);
+        public Task<bool> ChangeStatusAsync(Guid id, AccountStatus status, Guid actorId,string? communityRole=null)
+            => Accounts.ChangeStatusAsync(id, status, actorId,communityRole);
         #endregion Task
     }
 }

@@ -11,7 +11,6 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         #region Initialization
         public ManagementUser(ApiConnection api) : base(api) { }
         #endregion Initialization
-
         #region Structs
         /// <summary>Information required when the owner adds institutional personnel.</summary>
         public struct StaffRegistrationData
@@ -32,8 +31,12 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         /// <summary>Authorized account counts and audit items for Gestión Home.</summary>
         public readonly record struct DashboardData(int PendingAccounts,int ActiveAccounts,
             int StaffAccounts,int BlockedAccounts,IReadOnlyList<ActivityData> RecentEvents);
+        public struct ProfileData
+        {
+            [Required,StringLength(100,MinimumLength=2)] public string DisplayName {get;set;}
+            [StringLength(300)] public string? Biography {get;set;}
+        }
         #endregion Structs
-
         #region Task
         /// <summary>Authenticates the staff or owner through the institutional endpoint.</summary>
         public override async Task<OperationResultData> LoginAsync(LoginData data)
@@ -53,6 +56,13 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
             }
             catch(Exception ex) when(ex is KeyNotFoundException or InvalidOperationException or JsonException)
             {return new(false,"Respuesta de autenticación incompleta.");}
+        }
+
+        public async Task<OperationResultData> UpdateProfileAsync(ProfileData data)
+        {
+            var result=await Api.SendAsync(HttpMethod.Put,"api/management/profile",data);
+            if(result.Success){Api.UpdateUser(result.Data);return new(true,"Perfil actualizado.");}
+            return new(false,result.Error);
         }
 
         /// <summary>Returns the current authorized management dashboard summary.</summary>

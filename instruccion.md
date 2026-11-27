@@ -1,77 +1,98 @@
-# Mujeres Unidas · Instrucciones R2 y pruebas de aceptación
+# Mujeres Unidas 1.0.0 · Instalación y entrega
 
-**Candidata R2.** No reemplazar el trabajo local del equipo ni hacer commit automáticamente. Extraer este ZIP en **otra carpeta**, comparar con el commit R1 y conservar solamente cambios revisados y probados.
+## 1. Ryzen: compilar y revisar Git
 
-## 1. Rebuild en Visual Studio 2026
-
-Abre `MujeresUnidas.slnx` y desde **Developer PowerShell** en la raíz:
+Extrae la solución en una carpeta nueva. No reemplaces `.git`, secretos, bases ni archivos privados. Desde la raíz:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Set-ExecutionPolicy -Scope Process Bypass
 .\Scripts\QA-Rebuild.ps1
 ```
 
-Tres proyectos deben compilar sin errores. Copiar el texto completo de cualquier fallo de compilación. No publicar secretos ni datos reales.
+Si falla, no publiques. Revisa el código de error. Esta entrega no fue compilada en Windows/MAUI durante su preparación.
 
-## 2. Preparar SQL Server (solo base local de pruebas)
-
-En SSMS, conectarse a la instancia que usa `ConnectionStrings:Main`. Asegurarse de que se trata de la **base de demostración**, sin datos de valor.
-
-- Detener `MujeresUnidas.Server`.
-- Si existe una base antigua de R1, abrir `MujeresUnidas.Server/Infrastructure/Database/910_drop_demo_database.sql`. Solo si **se autoriza eliminar TODO** el contenido de la base `MujeresUnidas`, cambiar manualmente `@Confirm` a `1` y ejecutar. Se perderán cuentas y sesiones antiguas. Si la base contiene datos importantes, **no ejecutar** y usar otra instancia de pruebas.
-- Ejecutar `000_create_database.sql` y después `020_verify_fresh_demo.sql`. El script de creación es para base nueva; no actualiza estructuras incompatibles.
-- Comprobar `dbo.Accounts.CommunityRole` (Member/Staff), `dbo.Accounts.StaffRole` **nullable**, `dbo.ManagementRoles`, `dbo.CommunityPosts`, `dbo.Sessions` y `dbo.AuditEvents`.
-- `CommunityPosts` contiene tres entradas de ejemplo claramente etiquetadas; no son publicaciones reales.
-
-**Si `/api/setup/status` devuelve 503:** el esquema local es anterior a R2; no intentes crear cuentas hasta corregirlo. **Si devuelve `ownerExists:true`:** ya hay un Owner en esa base, por eso la ventana de primera activación no aparece. No se desactiva con un clic: crea una base de prueba nueva si necesitas repetir el flujo inicial.
-
-## 3. Configuración local de Server
-
-En Developer PowerShell, situarse en `MujeresUnidas.Server` y comprobar los secretos:
+Integra el contenido revisado en el clon privado existente (no copies bin, obj ni artifacts). Comprueba diferencias, elimina los Docs históricos si todavía están en el clon, no borres archivos ajenos y conserva el historial. Ejemplo, **desde el clon correcto**:
 
 ```powershell
-dotnet user-secrets list
+git status --short
+git add -A
+git diff --cached --check
+git diff --cached --stat
+git commit -m "release: Mujeres Unidas 1.0.0 Hackathon EarlyAccess"
+git push origin HEAD
 ```
 
-Debe haber una conexión `ConnectionStrings:Main` válida para SQL Server y una `MU_OWNER_SETUP_KEY` de al menos 24 caracteres. Ejemplo para la conexión local (ajustar instancia):
+Revisa el diff completo y secretos antes del commit. No uses force push. Comprueba la rama y política del repositorio; si hace falta, utiliza PR. El ZIP no contiene un commit remoto.
+
+## 2. ProLiant: actualizar sin destruir datos
+
+1. Haz copia de seguridad de la base `MujeresUnidas`, configuración original, claves y archivos `PrivateMedia`. Anota el directorio **real** del DLL que ejecutaba la API anterior y rutas MU_MEDIA_ROOT / MU_POST_MEDIA_ROOT si existen. No regeneres claves; se perdería acceso a contenido cifrado.
+2. Copia el código en una carpeta nueva. Publica Server en una salida vacía:
 
 ```powershell
-dotnet user-secrets set 'ConnectionStrings:Main' 'Server=localhost;Database=MujeresUnidas;Integrated Security=True;Encrypt=True;TrustServerCertificate=True;'
+.\Scripts\Publicar-Final.ps1 -Componente Server
 ```
 
-Crear una clave fuerte aleatoria *fuera del repositorio* si aún no existe. No mandarla por chat ni ponerla en el README. En la configuración del Owner se introduce esa misma clave.
-
-Levantar `MujeresUnidas.Server` con perfil **https**. Comprobar desde Edge:
-
-- `https://localhost:7013/health`
-- `https://localhost:7013/api/setup/status` → `{"ownerExists":false}` sobre una base nueva
-
-También ejecutar el chequeo de lectura opcional:
+3. Detén **solo Kestrel de Mujeres Unidas**, no SQL, Cloudflare ni la web principal. Verifica la base existente con SSMS: ejecuta `180_verify_beta10_full.sql`, `190_beta10_encuestas.sql` (idempotente), `195_verify_beta10_encuestas.sql` en ese orden. Archivos en `MujeresUnidas.Server/Infrastructure/Database`. Alternativa con autenticación Windows y sqlcmd:
 
 ```powershell
-.\Scripts\QA-Smoke.ps1
+$sql = Read-Host 'Instancia SQL existente'
+.\Scripts\Actualizar-BaseFinal.ps1 -SqlServer $sql -RespaldoConfirmado -AplicarEncuesta
 ```
 
-## 4. Pruebas reales de acceso
+Si la verificación 180 falla, identifica la migración previa faltante; no ejecutes un reset. Instalación desde cero es un escenario aparte: `Inicializar-Beta10-BaseNueva.ps1` se niega si la base existe.
 
-1. **Gestión sin Owner:** debe mostrar campos Nombre, Correo, Contraseña, Clave de instalación y el botón **Configurar autoridad principal**. Todos los controles visibles incluso con escalado 200 % (registrar captura si se recortan).
-2. **Owner:** con clave incorrecta no se crea; con clave correcta aparece confirmación y después el login; un segundo Owner no se puede crear. Al volver a abrir Gestión, debe ir directamente a login.
-3. **Home Gestión:** iniciar sesión con Owner; comprobar contadores reales, menú Inicio/Activaciones/Citas/Personal/Casos- Seguimiento/Reportes, sin opción Publicaciones. Citas/Casos/Reportes aún muestran aviso de pendiente.
-4. **Personal de Gestión:** crear una Administradora, Psicóloga, Jurídica o Trabajo Social con puesto cargado desde SQL. La Administradora puede ver activaciones; los demás puestos no reciben automáticamente esas facultades. Agregar un puesto adicional y comprobar que aparece sin recompilar.
-5. **Comunidad Member:** registrar con nombre, correo ficticio, CURP ficticia de **18** caracteres, contraseña de 10+, tipo Member. Intentar login antes de aprobación: debe rechazarlo como pendiente.
-6. **Gestión aprueba:** comprobar que la solicitud muestra el **tipo solicitado Member/Staff**, aprobar y volver a probar login Comunidad: debe abrir Home.
-7. **Comunidad Staff:** registrar **otra** cuenta ficticia como Staff; antes de aprobar no puede iniciar sesión ni moderar. Después de aprobar, entra a Comunidad y desde Perfil puede abrir Moderación.
-8. **Publicaciones:** Member crea un Blog y comprueba que está Pendiente en su perfil; no debe aparecer en Home. Staff lo ve en la cola y lo aprueba; entonces aparece bajo Blogs. Probar Rechazar, Editar y Retirar; confirmar que el servidor rechaza la aprobación de un Member.
-9. **Destacados:** Inicio muestra hasta tres entradas aprobadas y destacadas; las vistas Blogs/Guías/Empleos/Eventos muestran solo su categoría. No hay opción «Todas» ni botón de más destacados.
-10. **Sesiones:** cerrar sesión y verificar que `/api/auth/me` ya no acepta el token anterior. Bloquear una cuenta desde Gestión y comprobar que no entra de nuevo.
-11. **Diseño:** capturas de Gestión normal y maximizada; MAUI en Windows Machine y Android; revisar que no haya controles ocultos o desplazamiento innecesario en login. Diferencias visuales se registran como Issues de QA.
+4. Arranca el nuevo Server conservando las configuraciones originales. Si usabas variables de entorno, reutilízalas (sin imprimir secretos). Si usabas User Secrets con la misma cuenta de Windows, agrega `-UsarSecretosDesarrollo` para importarlos únicamente a este proceso de producción:
 
-## 5. Emulador Android (solo demostración con datos ficticios)
+```powershell
+$old = Read-Host 'Carpeta del DLL anterior (contiene PrivateMedia si no hay rutas externas)'
+.\Scripts\Iniciar-ServerFinal.ps1 -Publicacion '.\artifacts\Server' -SalidaAnterior $old -UsarSecretosDesarrollo
+```
 
-Visual Studio → proyecto `MujeresUnidas.Comunidad` → seleccionar **Android Emulator** en lugar de **Windows Machine**. Asegurarse de tener instalado workload MAUI/Android, Android SDK y una imagen de emulador. Ejecutar Server con perfil `https` en el mismo PC: además de `https://localhost:7013`, ese perfil abre **`http://localhost:5277`**. En desarrollo no se redirige este HTTP para permitir la conexión del emulador.
+El script requiere la conexión y las dos claves de cifrado existentes. Si el despliegue anterior usaba appsettings local o cuenta de servicio distinta, vuelve a cargar sus valores seguros como variables de entorno antes de ejecutar, no copies secretos al repo. Conserva `MU_OWNER_SETUP_KEY` si aún no existe Owner. El script copia `PrivateMedia` anterior a una salida nueva si existe; no sustituye un respaldo. En reinicios posteriores de la misma publicación, agrega `-ConservarMediaNueva` únicamente si esa carpeta contiene los datos actuales; no copies de nuevo la antigua. Mantén la consola activa. Si falla el arranque antes de admitir usuarios, detén el nuevo proceso y recupera el anterior; no borres datos. Si ya recibió escrituras, reconcilia la media antes de revertir. Para producción real se requiere un servicio y almacenamiento persistente administrado.
 
-Android MAUI usa **`http://10.0.2.2:5277/`** (10.0.2.2 apunta al PC anfitrión del emulador). Está habilitado cleartext **solo como prototipo local con datos sintéticos**. Antes de distribuir cualquier APK o usar datos reales, cerrar HTTP, habilitar un dominio HTTPS válido y endurecer el manifiesto Android. El proyecto **no está listo para difusión a personas reales**.
+5. La API escucha `http://localhost:5277`. El túnel remoto ya configurado debe seguir apuntando a ese puerto; no cambies DNS ni rutas. En otra consola:
 
-## 6. Estado de la revisión y Git
+```powershell
+.\Scripts\QA-Smoke.ps1 -ApiBase 'http://localhost:5277'
+$api = Read-Host 'URL pública HTTPS base'
+.\Scripts\QA-Smoke.ps1 -ApiBase $api
+```
 
-`R2` contiene código fuente, no un commit. No hay migraciones. Las interfaces visuales y la base SQL requieren prueba en Windows del equipo. Una compilación correcta no sustituye pruebas reales de registro, moderación o dispositivos. Tras aprobar, revisar `git diff` antes de hacer `commit` en su repositorio privado y asociar los Issues del tablero XP.
+Resultado esperado: `status=ready`, `schema=beta10` (compatibilidad SQL), `version=1.0.0`. Prueba desde otra red. Si aparece el resultado anterior sin `version`, aún está ejecutándose el Server anterior. Si da 503 revisa SQL/configuración. Nunca desactives certificados ni expongas SQL, RDP o iLO.
+
+## 3. Publicar clientes desde Ryzen
+
+Los archivos endpoint vienen vacíos; los valores locales de desarrollo no sirven para los teléfonos. Configura la URL pública al publicar, sin `/health/ready` ni puerto interno. El script valida la API y restaura el archivo de configuración del código después de cada publish.
+
+```powershell
+$api = Read-Host 'URL pública HTTPS base'
+.\Scripts\Publicar-Final.ps1 -Componente Gestion -ApiHttps $api
+.\Scripts\Publicar-Final.ps1 -Componente ComunidadAndroid -ApiHttps $api
+# Opcional: Comunidad en Windows
+.\Scripts\Publicar-Final.ps1 -Componente ComunidadWindows -ApiHttps $api
+```
+
+Distribuye la carpeta de publicación de Gestión completa, no solo su EXE. En Android comprueba el APK firmado, instalación y actualización (si cambió la firma, Android puede exigir desinstalar la versión anterior; respalda datos locales antes). El script no crea certificados de firma privados ni garantiza publicación en tiendas. En caso de error de MAUI, confirma workloads y SDK Android. Las publicaciones permanecen fuera de Git.
+
+## 4. Prueba de aceptación (datos ficticios)
+
+- Gestión: Owner existente, alta Staff, roles, activación/bloqueo, vista de reportes y exportación CSV.
+- Comunidad: registro, aprobación desde Gestión, login, perfil, publicación y moderación; dos cuentas para mensaje y permisos.
+- Atención: crea caso de demostración, asigna sede compatible, cita y consulta su estado; verificar que el informe anual cuenta citas y casos por separado.
+- Croquis: selecciona sede, vincula sector y actualiza. Comprueba que cambia el conteo y se conserva tras reinicio. No hay mapa de calles ni coordenadas de usuarias.
+- Encuesta: enviar con consentimiento, editar, retirar. Si no se conoce mes de inicio, no marcarlo. Menos de cinco participantes no habilitan agregado; valores o complementos menores a cinco se reservan (—). La cifra corresponde a respuestas actualizadas en el año, no a una serie histórica inmutable ni prueba de impacto causal.
+- Metas: registrar objetivo y evaluación con fuente; no simular resultados de éxito. Verifica actualización de la sección de encuestas.
+- Seguridad: verificar rechazo de token de otra aplicación, acceso a mensajes ajenos, contenido privado y recursos institucionales sin permisos. No usar datos reales.
+- UI: comprobar 1366x768, escalado 100/150/200%, móvil real, navegación, botones, campos y scroll.
+
+## 5. Capturas y video
+
+Para el README utiliza capturas de ejecución real, nunca imágenes conceptuales presentadas como evidencia. Guarda PNG sin información sensible y ejecuta:
+
+```powershell
+.\Scripts\Agregar-CapturaReadme.ps1 -Cliente gestion -ImagenPng (Read-Host 'Ruta PNG') -DatosFicticiosConfirmados
+.\Scripts\Agregar-CapturaReadme.ps1 -Cliente comunidad -ImagenPng (Read-Host 'Ruta PNG') -DatosFicticiosConfirmados
+```
+
+Haz un segundo commit solo de las capturas revisadas. Graba una demostración breve: acceso, publicación comunitaria, aprobación, cita/sede, croquis, encuesta y reporte. Muestra solo operaciones que funcionen. El agente IA quedó fuera; no hay atención oficial ni emergencia real.

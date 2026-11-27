@@ -7,14 +7,15 @@ namespace MujeresUnidas.Comunidad.Presentation
     public sealed class ModerationPage : ContentPage
     {
         #region Operation Data
+        private readonly ApiClient _api;
         private readonly Post _posts;
         private readonly VerticalStackLayout _list = new() {Spacing=12};
         private readonly Label _feedback = Ui.Text(string.Empty,12);
         #endregion Operation Data
-
         #region Initialization
         public ModerationPage(ApiClient api)
         {
+            _api=api;
             _posts=new Post(api);
             Title="Moderación";
             var content=new VerticalStackLayout {Padding=new Thickness(17,20,17,30),Spacing=13};
@@ -25,7 +26,6 @@ namespace MujeresUnidas.Comunidad.Presentation
             Content=Ui.Scroll(content);
         }
         #endregion Initialization
-
         #region Task
         protected override async void OnAppearing()
         {
@@ -46,7 +46,7 @@ namespace MujeresUnidas.Comunidad.Presentation
                 stack.Children.Add(Ui.Text(PostDetailPage.CategoryName(item.Category)+" · "+item.Author,12));
                 stack.Children.Add(Ui.Text(item.Summary,13));
                 var open=Ui.Secondary("Leer contenido completo");
-                open.Clicked+=async (_,_)=>await Navigation.PushAsync(new PostDetailPage(item));
+                open.Clicked+=async (_,_)=>await Navigation.PushAsync(new PostDetailPage(item,_api));
                 stack.Children.Add(open);
                 var approve=Ui.Primary("Aprobar");
                 var feature=Ui.Secondary("Aprobar y destacar");

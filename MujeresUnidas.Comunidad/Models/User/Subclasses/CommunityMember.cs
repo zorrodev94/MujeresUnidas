@@ -2,17 +2,35 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using MujeresUnidas.Comunidad.Connection;
 using MujeresUnidas.Comunidad.Models.User.Contracts;
+using MujeresUnidas.Comunidad.Models.Publications;
+using MujeresUnidas.Comunidad.Models.Messages;
+using MujeresUnidas.Comunidad.Models.User.Profiles;
 using BaseUser = global::MujeresUnidas.Comunidad.Models.User.Base.User;
 
 namespace MujeresUnidas.Comunidad.Models.User.Subclasses
 {
     /// <summary>Community account operations; the forms do not perform HTTP requests.</summary>
-    public sealed class CommunityMember : BaseUser, IAccountAccess<CommunityMember.RegistrationData>
+    public class CommunityMember : BaseUser, IAccountAccess<CommunityMember.RegistrationData>,
+        IPublicationPublisher, IMessageParticipant, IFollowableProfile
     {
         #region Initialization
         public CommunityMember(ApiClient api) : base(api) { }
+        public virtual string PublicRoleLabel=>"Miembro de Comunidad";
+        public virtual bool CanReviewBlogs=>false;
+        /// <summary>A UI projection only: no permissions are ever granted by the client class.</summary>
+        public static CommunityMember FromSession(ApiClient api)
+        {
+            var user=api.CurrentUser;
+            if(user.ValueKind!=JsonValueKind.Object || !user.TryGetProperty("communityRole",out var role))
+                return new CommunityMember(api);
+            return role.GetString() switch
+            {
+                "Staff"=>new CommunityStaff(api),
+                "Professional"=>new CommunityProfessional(api),
+                _=>new CommunityMember(api)
+            };
+        }
         #endregion Initialization
-
         #region Structs
         /// <summary>Data requested from a Community registration.</summary>
         public struct RegistrationData
@@ -23,12 +41,11 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
             public string Email { get; set; }
             [Required, RegularExpression("^[A-Z0-9]{18}$")]
             public string Curp { get; set; }
-
-            /// <summary>Requested community category; requires institutional approval.</summary>
-            [Required, RegularExpression("^(Member|Staff)$")]
-            public string CommunityRole { get; set; }
             [Required, StringLength(128, MinimumLength = 10)]
             public string Password { get; set; }
+
+            /// <summary>Voluntary self-declaration of eligibility; no gender inferred from names or documents.</summary>
+            public bool EligibilityAffirmed { get; set; }
         }
 
         /// <summary>Editable public profile information.</summary>
@@ -40,7 +57,6 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
             public string? Biography { get; set; }
         }
         #endregion Structs
-
         #region Task
         /// <summary>Authenticates and stores the returned session for the Community client.</summary>
         public override async Task<OperationResultData> LoginAsync(LoginData data)
@@ -65,7 +81,8 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
         public async Task<OperationResultData> RegisterAsync(RegistrationData data)
         {
             var reply=await Api.RequestAsync(HttpMethod.Post,"api/auth/register",data);
-            return new(reply.Success,reply.Success?"Solicitud enviada. Espera su activación desde Gestión.":reply.Error);
+            return new(reply.Success,reply.Success&&reply.Data.ValueKind==JsonValueKind.Object &&
+                reply.Data.TryGetProperty("message",out var notice)?notice.GetString()??"Solicitud recibida.":reply.Error);
         }
 
         /// <summary>Reads the current authenticated public profile.</summary>
@@ -97,12 +114,38 @@ namespace MujeresUnidas.Comunidad.Models.User.Subclasses
             return new(reply.Success,reply.Success?"Cambios guardados en SQL Server.":reply.Error);
         }
 
-        /// <summary>Clears the local session when the user closes her account session.</summary>
-        public async Task SignOutAsync()
+        /// <summary>Submits a typed publication; approval is decided by Server.</summary>
+        public Task<Post.ResultData> CreatePostAsync(Post.CreateData data)
+            => new Post(Api).CreatePostAsync(data);
+        public Task<Post.ResultData> EditPostAsync(Guid id,Post.EditData data)
+            => new Post(Api).EditPostAsync(id,data);
+        public Task<Post.ResultData> DeletePostAsync(Guid id)
+            => new Post(Api).DeletePostAsync(id);
+        /// <summary>Starts a direct, group, or public conversation according to Server policy.</summary>
+        public Task<(Guid? Id,string Error)> CreateConversationAsync(Conversation.CreateData data)
+            => new Conversation(Api).CreateConversationAsync(data);
+        /// <summary>Routes message operations through the dedicated model, never directly through a page.</summary>
+        public Task<(bool Success,string Error)> SendMessageAsync(Guid conversationId,string body)
+            => new Message(Api).SendMessageAsync(conversationId,body);
+        public Task<(bool Success,string Error)> EditMessageAsync(Guid messageId,string body)
+            => new Message(Api).EditMessageAsync(messageId,body);
+        public Task<(bool Success,string Error)> DeleteMessageAsync(Guid messageId)
+            => new Message(Api).DeleteMessageAsync(messageId);
+        public Task<(bool Success,string Message)> LeaveConversationAsync(Guid conversationId)
+            => new Conversation(Api).LeaveAsync(conversationId);
+        /// <summary>Follows or unfollows a public Community identity with Server checks.</summary>
+        public async Task<(bool Success,string Error)> FollowUserAsync(Guid userId)
         {
-            try { await Api.RequestAsync(HttpMethod.Post,"api/auth/logout"); }
-            finally { Api.SignOut(); }
+            var result=await new CommunityDirectory(Api).FollowAsync(userId,true);
+            return (result.Success,result.Error);
         }
+        public async Task<(bool Success,string Error)> UnfollowUserAsync(Guid userId)
+        {
+            var result=await new CommunityDirectory(Api).FollowAsync(userId,false);
+            return (result.Success,result.Error);
+        }
+        /// <summary>Clears the local session when the user closes her account session.</summary>
+        public override Task SignOutAsync() => base.SignOutAsync();
         public void SignOut() => Api.SignOut();
         #endregion Task
     }

@@ -12,7 +12,6 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         #region Initialization
         public OwnerUser(ApiConnection api) : base(api) { }
         #endregion Initialization
-
         #region Structs
         public struct SetupData
         {
@@ -37,7 +36,6 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
             public string DisplayName { get; set; }
         }
         #endregion Structs
-
         #region Task
         /// <summary>Queries the Server setup state; no secret is transferred.</summary>
         public async Task<(bool Success,bool OwnerExists,string Error)> OwnerExistsAsync()
@@ -75,9 +73,10 @@ namespace MujeresUnidas.Gestion.Models.User.Subclasses
         }
 
         /// <summary>Approves a community registration as Owner; the API verifies permissions.</summary>
-        public async Task<OperationResultData> AcceptAccountAsync(Guid communityAccountId)
+        public async Task<OperationResultData> AcceptAccountAsync(Guid communityAccountId,string communityRole)
         {
-            var reply = await Api.SendAsync(HttpMethod.Post,$"api/accounts/{communityAccountId}/activate");
+            var reply = await Api.SendAsync(HttpMethod.Post,$"api/accounts/{communityAccountId}/activate",
+                new CommunityMember.ActivationData(communityRole));
             return new(reply.Success,reply.Success?"Cuenta comunitaria aprobada.":reply.Error);
         }
 

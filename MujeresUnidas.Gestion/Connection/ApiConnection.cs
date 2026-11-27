@@ -7,7 +7,23 @@ namespace MujeresUnidas.Gestion.Connection
 /// <summary>Provides HTTPS communication with safe responses and descriptive API validation errors.</summary>
 public sealed class ApiConnection : IDisposable
 {
-    private readonly HttpClient _http = new() { BaseAddress = new Uri("https://localhost:7013/"), Timeout=TimeSpan.FromSeconds(15) };
+    // Override only by local process/system configuration, never by a URL committed to GitHub.
+    private readonly HttpClient _http = new(new HttpClientHandler{AllowAutoRedirect=false})
+    {
+        BaseAddress = new Uri(SelectServerAddress()), Timeout=TimeSpan.FromSeconds(20)
+    };
+    private static string SelectServerAddress()
+    {
+        var setting=Environment.GetEnvironmentVariable("MU_SERVER_URL");
+        if(string.IsNullOrWhiteSpace(setting))
+        {
+            var path=Path.Combine(AppContext.BaseDirectory,"server-endpoint.json");
+            try {if(File.Exists(path)){using var doc=JsonDocument.Parse(File.ReadAllText(path));setting=doc.RootElement.GetProperty("apiBaseUrl").GetString();}}
+            catch(Exception ex) when(ex is IOException or JsonException or KeyNotFoundException){System.Diagnostics.Debug.WriteLine(ex.Message);}
+        }
+        if(Uri.TryCreate(setting,UriKind.Absolute,out var uri) && uri.Scheme==Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.UserInfo)&&string.IsNullOrEmpty(uri.Query)&&string.IsNullOrEmpty(uri.Fragment)&&uri.AbsolutePath=="/")return uri.AbsoluteUri;
+        return "https://localhost:7013/";
+    }
     public string Token { get; private set; } = string.Empty;
     public JsonElement CurrentUser { get; private set; }
 
@@ -26,8 +42,39 @@ public sealed class ApiConnection : IDisposable
         }
         catch(Exception ex) when(ex is HttpRequestException or TaskCanceledException)
         {
-            return(false,default,"No se pudo conectar con Server en HTTPS 7013. Revisa su ejecución y certificado.");
+            return(false,default,"No se pudo conectar con Server por HTTPS. Revisa MU_SERVER_URL y el certificado.");
         }
+    }
+    /// <summary>Fetches only server-authorized JPEG/PNG previews for moderation.</summary>
+    public async Task<byte[]?> DownloadImageAsync(string route)
+    {
+        try
+        {
+            using var request=new HttpRequestMessage(HttpMethod.Get,route);
+            if(!string.IsNullOrEmpty(Token))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",Token);
+            using var response=await _http.SendAsync(request);
+            if(!response.IsSuccessStatusCode || response.Content.Headers.ContentLength>2_200_000)return null;
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+        catch(Exception ex) when(ex is HttpRequestException or TaskCanceledException){return null;}
+    }
+    /// <summary>Uploads an authenticated private profile image.</summary>
+    public async Task<(bool Success,string Error)> UploadFileAsync(string route,string path)
+    {
+        try
+        {
+            await using var stream=File.OpenRead(path);
+            using var form=new MultipartFormDataContent();
+            using var content=new StreamContent(stream);
+            content.Headers.ContentType=new MediaTypeHeaderValue(Path.GetExtension(path).Equals(".png",StringComparison.OrdinalIgnoreCase)?"image/png":"image/jpeg");
+            form.Add(content,"file",Path.GetFileName(path));
+            using var request=new HttpRequestMessage(HttpMethod.Post,route){Content=form};
+            if(!string.IsNullOrEmpty(Token))request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",Token);
+            using var response=await _http.SendAsync(request);
+            return(response.IsSuccessStatusCode,response.IsSuccessStatusCode?string.Empty:$"Error HTTP {(int)response.StatusCode} al cargar imagen.");
+        }
+        catch(Exception ex) when(ex is IOException or HttpRequestException or TaskCanceledException)
+        {return(false,"No se pudo leer o enviar la imagen.");}
     }
     private static string Explain(JsonElement data,int code)
     {
@@ -52,6 +99,7 @@ public sealed class ApiConnection : IDisposable
         Token=token;
         CurrentUser=user.Clone();
     }
+    public void UpdateUser(JsonElement user) => CurrentUser=user.Clone();
     public async Task SignOutAsync()
     {
         try { await SendAsync(HttpMethod.Post,"api/auth/logout"); }

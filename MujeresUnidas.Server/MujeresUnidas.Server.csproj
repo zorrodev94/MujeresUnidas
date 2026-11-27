@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Keeps the already configured R1 secrets on the original development PC. -->
     <UserSecretsId>b5ba3a4a-3355-4bdc-bde1-b9696ec27096</UserSecretsId>
@@ -19,4 +20,8 @@
     <Folder Include="Controllers\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Same source contracts, no fourth project and no copy/paste DTO drift. -->
+    <Compile Include="..\Shared\Contracts\*.cs" Link="Models\Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

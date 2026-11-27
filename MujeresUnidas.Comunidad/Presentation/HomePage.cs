@@ -12,13 +12,14 @@ namespace MujeresUnidas.Comunidad.Presentation
         private readonly Post _posts;
         private readonly CommunityMember _member;
         private readonly VerticalStackLayout _cards = new() { Spacing=12 };
-        private readonly Label _heading = Ui.Heading("Destacados",25);
+        private readonly Label _heading = Ui.Heading("Publicaciones de la comunidad",24);
+        private readonly SearchBar _search=new(){Placeholder="Buscar publicaciones...",TextColor=Ui.Plum,PlaceholderColor=Ui.Muted,BackgroundColor=Colors.White};
+        private IReadOnlyList<Post.ViewData> _feed=Array.Empty<Post.ViewData>();
         private readonly Label _feedback = Ui.Text(string.Empty,12);
         private string? _category;
-        private bool _resetOnProfileReturn;
+
         private readonly Dictionary<string,Button> _buttons = new();
         #endregion Operation Data
-
         #region Initialization
         public HomePage(ApiClient api)
         {
@@ -30,10 +31,29 @@ namespace MujeresUnidas.Comunidad.Presentation
             var root=new Grid {BackgroundColor=Ui.Background,
                 RowDefinitions={new RowDefinition(GridLength.Star),new RowDefinition(GridLength.Auto)}};
             var body=new VerticalStackLayout {Spacing=13,Padding=new Thickness(15,12,15,30)};
-            body.Children.Add(Ui.Logo(78));
-            body.Children.Add(Ui.Text("Comunidad · recursos, experiencias y oportunidades",12));
+            body.Children.Add(Ui.Header(this,api,"Comunidad · Inicio"));
+            var welcome=new VerticalStackLayout{Spacing=6};
+            welcome.Children.Add(Ui.Heading("Una comunidad que acompaña y transforma",20));
+            welcome.Children.Add(Ui.Text("Comparte experiencias, consulta recursos y encuentra actividades aprobadas.",12));
+            welcome.Children.Add(new Image{Source="mu_hero_welcome.png",HeightRequest=190,Aspect=Aspect.AspectFit});
+            body.Children.Add(Ui.Card(welcome,12));
+            var openEditor=Ui.Primary("＋ Crear Blog o publicación");
+            openEditor.Clicked+=async (_,_)=>await Navigation.PushAsync(new CreatePostPage(_api));
+            body.Children.Add(openEditor);
+            var surveyBanner=new VerticalStackLayout{Spacing=7};
+            surveyBanner.Children.Add(Ui.Tag("ENCUESTA VOLUNTARIA · IMPACTO SOCIAL",true));
+            surveyBanner.Children.Add(Ui.Heading("¿Estudias o trabajas?",19));
+            surveyBanner.Children.Add(Ui.Text("Ayúdanos a medir cambios y oportunidades. Tu respuesta individual será privada.",12));
+            var openSurvey=Ui.Primary("Responder encuesta de progreso");
+            openSurvey.Clicked+=async (_,_)=>await Navigation.PushAsync(new CommunitySurveyPage(_api));
+            surveyBanner.Children.Add(openSurvey);
+            body.Children.Add(Ui.Card(surveyBanner,15));
             body.Children.Add(_heading);
+            _search.TextChanged+=(_,_)=>RenderFiltered();
+            // SearchBar is an actual native input. It filters the already loaded feed without API calls per keystroke.
+            body.Children.Add(_search);
             var filters=new HorizontalStackLayout {Spacing=7};
+            AddFilter(filters,"Todas",string.Empty);
             AddFilter(filters,"Blogs","Blog");
             AddFilter(filters,"Guías","Guide");
             AddFilter(filters,"Empleos","Job");
@@ -44,23 +64,7 @@ namespace MujeresUnidas.Comunidad.Presentation
             body.Children.Add(_cards);
             body.Children.Add(Ui.Notice("Si estás en peligro inmediato, llama al 911. Esta aplicación académica no envía alertas ni reemplaza atención profesional."));
             root.Add(Ui.Scroll(body),0,0);
-            var bottom=new Grid {BackgroundColor=Colors.White,HeightRequest=66,
-                ColumnDefinitions={new ColumnDefinition(GridLength.Star),new ColumnDefinition(GridLength.Star),
-                    new ColumnDefinition(GridLength.Star),new ColumnDefinition(GridLength.Star),
-                    new ColumnDefinition(GridLength.Star),new ColumnDefinition(GridLength.Star)}};
-            AddTab(bottom,"Inicio",0,null);
-            AddTab(bottom,"Blogs",1,"Blog");
-            AddTab(bottom,"Guías",2,"Guide");
-            AddTab(bottom,"Empleos",3,"Job");
-            AddTab(bottom,"Eventos",4,"Event");
-            var profile=Tab("Perfil");
-            profile.Clicked+=async (_,_)=>
-            {
-                _resetOnProfileReturn=true;
-                await Navigation.PushAsync(new ProfilePage(_api));
-            };
-            bottom.Add(profile,5,0);
-            root.Add(bottom,0,1);
+            root.Add(Ui.MainTabs(this,api,"Inicio"),0,1);
             Content=root;
         }
 
@@ -68,36 +72,17 @@ namespace MujeresUnidas.Comunidad.Presentation
         {
             var control=Ui.Secondary(title);
             control.FontSize=12;control.HeightRequest=43;control.Padding=new Thickness(11,0);
-            control.Clicked+=async (_,_)=>await SelectAsync(category);
+            control.Clicked+=async (_,_)=>await SelectAsync(category.Length==0?null:category);
             layout.Children.Add(control);
             _buttons["filter:"+category]=control;
         }
 
-        private static Button Tab(string text)
-        {
-            var b=Ui.Secondary(text);
-            b.CornerRadius=10;b.FontSize=10;b.FontAttributes=FontAttributes.Bold;
-            b.Padding=new Thickness(0);b.Margin=new Thickness(1,7);
-            b.BackgroundColor=Colors.White;
-            return b;
-        }
-        private void AddTab(Grid bottom,string title,int column,string? category)
-        {
-            var tab=Tab(title);
-            tab.Clicked+=async (_,_)=>await SelectAsync(category);
-            bottom.Add(tab,column,0);
-            _buttons["tab:"+(category??"Home")]=tab;
-        }
         #endregion Initialization
-
         #region Task
         protected override async void OnAppearing()
         {
             base.OnAppearing();
-            // Returning from Perfil restarts at Destacados; other Back actions preserve the section.
-            string? next = _resetOnProfileReturn ? null : _category;
-            _resetOnProfileReturn=false;
-            await SelectAsync(next);
+            await SelectAsync(_category);
         }
 
         private async Task SelectAsync(string? category)
@@ -105,16 +90,16 @@ namespace MujeresUnidas.Comunidad.Presentation
             _category=category;
             _heading.Text=category switch
             {
-                "Blog"=>"Blogs", "Guide"=>"Guías", "Job"=>"Empleos", "Event"=>"Eventos", _=>"Destacados"
+                "Blog"=>"Blogs", "Guide"=>"Guías", "Job"=>"Empleos", "Event"=>"Eventos", _=>"Publicaciones de la comunidad"
             };
             foreach(var pair in _buttons)
             {
-                bool selected=pair.Key=="tab:"+(category??"Home") || pair.Key=="filter:"+category;
+                bool selected=pair.Key=="filter:"+(category??string.Empty);
                 pair.Value.BackgroundColor=selected ? Ui.Lavender : Colors.White;
             }
             _feedback.Text="Cargando...";
             _cards.Children.Clear();
-            var response=await _posts.FeedAsync(category,category is null);
+            var response=await _posts.FeedAsync(category,false);
             if(category!=_category)return;
             if(!response.Success)
             {
@@ -122,37 +107,58 @@ namespace MujeresUnidas.Comunidad.Presentation
                 return;
             }
             _feedback.Text=string.Empty;
-            if(response.Items.Count==0)
-            {
-                _cards.Children.Add(Ui.Notice(category is null ?
-                    "Todavía no hay publicaciones destacadas aprobadas." :
-                    "Aún no hay publicaciones aprobadas en esta sección."));
-                return;
-            }
-            foreach(var item in response.Items) _cards.Children.Add(RenderCard(item));
+            _feed=response.Items;
+            RenderFiltered();
         }
 
+        private void RenderFiltered()
+        {
+            _cards.Children.Clear();
+            var query=(_search.Text??string.Empty).Trim();
+            var visible=_feed.Where(p=>p.Category!="Moment" && (query.Length==0 ||
+                p.Title.Contains(query,StringComparison.OrdinalIgnoreCase)||
+                p.Summary.Contains(query,StringComparison.OrdinalIgnoreCase)||
+                p.Author.Contains(query,StringComparison.OrdinalIgnoreCase)||
+                (p.Subcategory?.Contains(query,StringComparison.OrdinalIgnoreCase)??false))).ToList();
+            if(visible.Count==0)_cards.Children.Add(Ui.Notice("No hay publicaciones aprobadas que coincidan con tu búsqueda."));
+            foreach(var item in visible)_cards.Children.Add(RenderCard(item));
+        }
+        /// <summary>Community publication card: content-first feed with rounded cover and clear author metadata.</summary>
         private Border RenderCard(Post.ViewData post)
         {
-            var content=new Grid {ColumnSpacing=12,
-                ColumnDefinitions={new ColumnDefinition(new GridLength(105)),new ColumnDefinition(GridLength.Star)}};
             string illustration=post.Category switch
             {
-                "Guide"=>"mu_guide.png", "Event"=>"mu_event.png",
-                "Job"=>"mu_books.png",_=>"mu_story.png"
+                "Guide"=>"mu_demo_post_guide.jpg", "Event"=>"mu_demo_post_event.jpg",
+                "Job"=>"mu_demo_post_job.jpg",_=>"mu_demo_post_support.jpg"
             };
-            content.Add(new Image {Source=illustration,HeightRequest=108,WidthRequest=105,
-                Aspect=Aspect.AspectFill},0,0);
-            var info=new VerticalStackLayout {Spacing=5,VerticalOptions=LayoutOptions.Center};
-            info.Children.Add(Ui.Text(PostDetailPage.CategoryName(post.Category)+(post.Example?" · Ejemplo":""),11));
-            info.Children.Add(Ui.Heading(post.Title,16));
-            info.Children.Add(Ui.Text(post.Summary,12));
-            content.Add(info,1,0);
-            var card=Ui.Card(content,12);
+            var content=new VerticalStackLayout{Spacing=10};
+            var identity=new HorizontalStackLayout{Spacing=8};
+            identity.Children.Add(Ui.Icon("nav_profile.png",30));
+            var author=new VerticalStackLayout{Spacing=2,VerticalOptions=LayoutOptions.Center};
+            author.Children.Add(Ui.Heading(post.Author,14));
+            author.Children.Add(Ui.Text(post.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy"),11));
+            identity.Children.Add(author);content.Children.Add(identity);
+            var cover=new Image{Source=illustration,HeightRequest=180,
+                Aspect=Aspect.AspectFill,HorizontalOptions=LayoutOptions.Fill};
+            content.Children.Add(Ui.Cover(cover,180));
+            _=LoadCoverAsync(post.Id,cover);
+            var tags=new HorizontalStackLayout{Spacing=6};
+            tags.Children.Add(Ui.Tag(PostDetailPage.CategoryName(post.Category)));
+            if(post.Featured)tags.Children.Add(Ui.Tag("Destacada",true));
+            content.Children.Add(tags);
+            content.Children.Add(Ui.Heading(post.Title,18));
+            content.Children.Add(Ui.Text(post.Summary,13));
+            content.Children.Add(Ui.Text("Abrir publicación y participar",11));
+            var card=Ui.Card(content,14);
             var tap=new TapGestureRecognizer();
-            tap.Tapped+=async (_,_)=>await Navigation.PushAsync(new PostDetailPage(post));
+            tap.Tapped+=async (_,_)=>await Navigation.PushAsync(new PostDetailPage(post,_api));
             card.GestureRecognizers.Add(tap);
             return card;
+        }
+        private async Task LoadCoverAsync(Guid id,Image target)
+        {
+            var bytes=await _posts.CoverAsync(id);
+            if(bytes is not null)target.Source=Ui.BytesSource(bytes);
         }
         #endregion Task
     }

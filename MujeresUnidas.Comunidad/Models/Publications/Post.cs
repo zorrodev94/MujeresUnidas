@@ -9,44 +9,61 @@ namespace MujeresUnidas.Comunidad.Models.Publications
     {
         #region Operation Data
         private readonly ApiClient _api;
-        internal static readonly List<string> Categories = new() { "Blog", "Guide", "Job", "Event" };
+        internal static readonly List<string> Categories = new() { "Moment", "Blog", "Guide", "Job", "Event" };
         #endregion Operation Data
-
         #region Initialization
         public Post(ApiClient api) { _api = api; }
         #endregion Initialization
-
         #region Structs
         /// <summary>Required data for a new community publication.</summary>
         public struct CreateData
         {
+            [Required, StringLength(48)] public string Subcategory { get; set; }
+            [StringLength(16)] public string? Mode { get; set; }
             [Required] public string Category { get; set; }
             [Required, StringLength(120, MinimumLength=4)] public string Title { get; set; }
             [Required, StringLength(260, MinimumLength=8)] public string Summary { get; set; }
-            [Required, StringLength(2500, MinimumLength=20)] public string Body { get; set; }
+            [Required, StringLength(12000, MinimumLength=8)] public string Body { get; set; }
         }
 
         /// <summary>Editable publication information; its category does not change.</summary>
         public struct EditData
         {
+            [Required, StringLength(48)] public string Subcategory { get; set; }
+            [StringLength(16)] public string? Mode { get; set; }
             [Required, StringLength(120, MinimumLength=4)] public string Title { get; set; }
             [Required, StringLength(260, MinimumLength=8)] public string Summary { get; set; }
-            [Required, StringLength(2500, MinimumLength=20)] public string Body { get; set; }
+            [Required, StringLength(12000, MinimumLength=8)] public string Body { get; set; }
         }
 
         /// <summary>Publication returned by the authenticated community feed.</summary>
         public readonly record struct ViewData(Guid Id, string Category, string Title, string Summary,
-            string Body, string Author, string Status, bool Featured, bool Example, DateTime CreatedUtc);
+            string Body, string Author, string Status, bool Featured, bool Example, DateTime CreatedUtc, string? Subcategory = null, string? Mode = null);
 
         /// <summary>Operation status returned to the page for user feedback.</summary>
-        public readonly record struct ResultData(bool Success, string Message);
+        public readonly record struct ResultData(bool Success, string Message,Guid? Id=null);
         #endregion Structs
-
+        #region Arrays
+        /// <summary>The presentation catalogue mirrors the server's category-specific validation.</summary>
+        public static IReadOnlyList<string> Subcategories(string type) => type switch
+        {
+            "Moment"=>new[]{"Vida diaria","Bienestar","Reflexiones","Celebraciones"},
+            "Guide"=>new[]{"Superación","Aplicación","Prevención","Educación","Orientación"},
+            "Job"=>new[]{"Cine","Comercio","Administración","Ingeniería","Docencia","Seguridad","Otros"},
+            "Event"=>new[]{"Fiesta","Inauguración","Taller","Conferencia","Encuentro","Otros"},
+            _=>new[]{"Ciencia","Historia","Poemas","Juegos","Reflexiones","Bienestar"}
+        };
+        public static int BodyLimit(string type)=>type switch{"Moment"=>600,"Guide"=>12000,"Job"=>5000,"Event"=>4000,_=>8000};
+        #endregion Arrays
         #region Task
         /// <summary>Loads featured or category-specific approved content from Server.</summary>
         public Task<(bool Success, IReadOnlyList<ViewData> Items, string Error)> FeedAsync(string? category, bool featured = false)
             => ReadAsync("api/posts?featured=" + (featured ? "true" : "false") +
                 (category is null ? string.Empty : "&category=" + Uri.EscapeDataString(category)));
+
+        /// <summary>Loads approved public posts by a Community author.</summary>
+        public Task<(bool Success, IReadOnlyList<ViewData> Items, string Error)> ByAuthorAsync(Guid id)
+            => ReadAsync($"api/posts/by-author/{id}");
 
         /// <summary>Loads the account's own pending, approved or rejected entries.</summary>
         public Task<(bool Success, IReadOnlyList<ViewData> Items, string Error)> MineAsync()
@@ -61,9 +78,31 @@ namespace MujeresUnidas.Comunidad.Models.Publications
         {
             var reply = await _api.RequestAsync(HttpMethod.Post, "api/posts", data);
             if (!reply.Success) return new(false, reply.Error);
-            return new(true, Message(reply.Data,"Solicitud registrada."));
+            Guid? id=reply.Data.ValueKind==JsonValueKind.Object && reply.Data.TryGetProperty("id",out var parsed) &&
+                parsed.TryGetGuid(out var actual)?actual:null;
+            return new(true, Message(reply.Data,"Solicitud registrada."),id);
         }
 
+        /// <summary>Uploads a bounded image to its author-owned post after creation.</summary>
+        public Task<(bool Success,string Error)> UploadImageAsync(Guid id,FileResult file)
+            => _api.UploadImageAsync($"api/posts/{id}/media",file);
+        public Task<(bool Success,string Error)> UploadCoverAsync(Guid id,FileResult file)
+            => _api.UploadImageAsync($"api/posts/{id}/cover",file);
+        public Task<byte[]?> CoverAsync(Guid id)
+            => _api.DownloadImageAsync($"api/posts/{id}/cover");
+        /// <summary>Retrieves accessible image IDs, not raw storage keys.</summary>
+        public async Task<(IReadOnlyList<Guid> Items,string Error)> MediaAsync(Guid id)
+        {
+            var result=await _api.RequestAsync(HttpMethod.Get,$"api/posts/{id}/media");
+            if(!result.Success)return(Array.Empty<Guid>(),result.Error);
+            try
+            {
+                return(JsonSerializer.Deserialize<List<Guid>>(result.Data.GetRawText())??new(),string.Empty);
+            }
+            catch(JsonException){return(Array.Empty<Guid>(),"No se pudo leer la galería.");}
+        }
+        public Task<byte[]?> ImageAsync(Guid postId,Guid mediaId)
+            => _api.DownloadImageAsync($"api/posts/{postId}/media/{mediaId}");
         /// <summary>Modifies one authorized publication, re-queueing regular member edits.</summary>
         public async Task<ResultData> EditPostAsync(Guid id, EditData data)
         {
@@ -71,11 +110,15 @@ namespace MujeresUnidas.Comunidad.Models.Publications
             return new(reply.Success,reply.Success?"Publicación actualizada.":reply.Error);
         }
 
+        /// <summary>Reads the authenticated member's saved approved posts from Server.</summary>
+        public Task<(bool Success,IReadOnlyList<ViewData> Items,string Error)> SavedAsync()
+            => ReadAsync("api/posts/saved");
+
         /// <summary>Withdraws a member-owned post or a Staff-moderated post.</summary>
         public async Task<ResultData> DeletePostAsync(Guid id)
         {
             var reply = await _api.RequestAsync(HttpMethod.Delete,$"api/posts/{id}");
-            return new(reply.Success,reply.Success?"Publicación retirada.":reply.Error);
+            return new(reply.Success,reply.Success?Message(reply.Data,"Solicitud registrada."):reply.Error);
         }
 
         /// <summary>Reviews a pending post; Server verifies Staff authorization.</summary>
@@ -98,7 +141,9 @@ namespace MujeresUnidas.Comunidad.Models.Publications
                         Get(item,"category"), Get(item,"title"), Get(item,"summary"),
                         Get(item,"body"),Get(item,"author"),Get(item,"status"),
                         item.GetProperty("featured").GetBoolean(),item.GetProperty("example").GetBoolean(),
-                        item.GetProperty("createdUtc").GetDateTime()));
+                        item.GetProperty("createdUtc").GetDateTime(),
+                        item.TryGetProperty("subcategory",out var sub)&&sub.ValueKind==JsonValueKind.String?sub.GetString():null,
+                        item.TryGetProperty("mode",out var mode)&&mode.ValueKind==JsonValueKind.String?mode.GetString():null));
                 }
                 return (true,items,string.Empty);
             }
